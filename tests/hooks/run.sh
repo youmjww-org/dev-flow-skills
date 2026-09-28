@@ -172,6 +172,13 @@ out="$(run_hook pre-agent-check.sh "$dir" "$(agent_json stage-spec-agent)")"
 assert_empty "next_stage=spec + stage-spec-agent は許可（出力なし）" "$out"
 assert_contains "agent_start が flow.log に記録される" "$(cat "$dir/doc/process/flow.log")" "event=agent_start agent=stage-spec-agent stage=spec"
 
+# /cd で移動した後: CLAUDE_PROJECT_DIR は起動時のディレクトリのまま、hook 入力の cwd が移動先を指す
+other="$(mktemp -d)"
+json="$(agent_json stage-spec-agent | jq --arg c "$dir" '. + {cwd: $c}')"
+out="$( ( cd "$other" && export CLAUDE_PROJECT_DIR="$other" PATH="$FIXTURES:$PATH" && printf '%s' "$json" | "$HOOKS/pre-agent-check.sh" ) 2>/dev/null )"
+assert_empty "CLAUDE_PROJECT_DIR より hook 入力の cwd の state.json を優先する（/cd 後）" "$out"
+rm -rf "$other"
+
 out="$(run_hook pre-agent-check.sh "$dir" "$(agent_json stage-test-agent)")"
 assert_eq "ステージとエージェントの不一致は ask" "$(decision "$out")" "ask"
 assert_contains "不一致理由に期待エージェント名" "$(reason "$out")" "stage-spec-agent"

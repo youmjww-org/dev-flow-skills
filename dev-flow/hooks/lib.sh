@@ -12,8 +12,11 @@ jqi() {
   printf '%s' "$INPUT" | jq -r "$@" 2>/dev/null || true
 }
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(jqi '.cwd // empty')}"
-: "${PROJECT_DIR:=$PWD}"
+# hook 入力の cwd を優先する。CLAUDE_PROJECT_DIR はセッション起動時のディレクトリのまま
+# /cd で移動しても変わらないため、先に見ると移動前のプロジェクトの state.json を参照してしまう。
+# cwd の無い呼び出し（mark-group-done.sh 等の Bash 実行）では CLAUDE_PROJECT_DIR → $PWD の順に使う。
+PROJECT_DIR="$(jqi '.cwd // empty')"
+: "${PROJECT_DIR:=${CLAUDE_PROJECT_DIR:-$PWD}}"
 
 PROCESS_DIR="$PROJECT_DIR/doc/process"
 STATE="$PROCESS_DIR/state.json"   # 注意: 各 hook では STATE を再代入しないこと（PR の state 等は PR_STATE などを使う）

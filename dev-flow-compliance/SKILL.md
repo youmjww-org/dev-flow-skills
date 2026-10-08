@@ -240,7 +240,7 @@ git log --oneline --grep="^fix\|^chore" -- .
 
 完了レポートを送信したら、以下を実行：
 
-1. `change` / `fix` の場合、テスト定義書・API 仕様書・インフラ仕様書の frontmatter から `status: added|modified` を取り除く（次の run が差分を正しく判定できるように）。要件定義書の `（廃止）` 項目はそのまま残す
+1. テスト定義書・API 仕様書・インフラ仕様書の frontmatter に `status: added|modified` があれば、`kind` に関係なく取り除く（`feature` でも既存の文書に差分として足すと付く）（次の run が差分を正しく判定できるように）。要件定義書の `（廃止）` 項目はそのまま残す
 2. `doc/process/state.json` を更新して保存（**削除しない**。`tech_stack` / 各パス / `is_*` / `baseline_commit` は次の run が使う）：
    - `next_stage` を `"completed"`
    - `baseline_commit` を `git rev-parse HEAD`（次の change / fix の差分基点）

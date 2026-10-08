@@ -119,7 +119,7 @@ metadata:
 タスクに関係ないファイルを変更しそうになった場合は変更せず、`status: "blocked"`, `blocker_type: "out_of_scope_change"` の JSON を最終回答として返して報告してください。
 ```
 
-## Sonnet 昇格時のプロンプト追記
+## Sonnet 昇格時のプロンプト追記（cost プロファイルのみ）
 
 ```
 【モデル昇格通知】

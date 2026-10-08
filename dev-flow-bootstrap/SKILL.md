@@ -56,7 +56,7 @@ git ls-files | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -20
 
 ## STEP 2: コード棚卸し（inventory）
 
-`prompts/inventory.md` を Read し、プレースホルダー（`{SCOPE}`, `{tech_stack}`）を置換して Agent を起動（`name="bootstrap-inventory"`, `run_in_background=false`, `model="sonnet"`）。
+`prompts/inventory.md` を Read し、プレースホルダー（`{SCOPE}`, `{tech_stack}`）を置換して Agent を起動（`name="bootstrap-inventory"`, `run_in_background=false`, `model` は quality: `"opus"` / cost: `"sonnet"`。`dev-flow/reference/profiles.md`）。
 
 出力 `doc/process/inventory.md` は機械可読な表で、以降の writer が全員これを入力にする。inventory が空同然（エントリポイントもテストも見つからない）なら人間に報告して中断する。
 
@@ -76,7 +76,7 @@ git ls-files | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -20
 
 ## STEP 4: 仕様書の逆生成（並列）
 
-以下を **同一ターンで同時に**起動する（`run_in_background=true`, `model="sonnet"`）。各プロンプトを Read してプレースホルダー（`{INVENTORY_PATH}`, `{REQUIREMENTS_PATHS}`, `{tech_stack}`, 出力パス）を置換する。Agent Teams は使わない。
+以下を **同一ターンで同時に**起動する（`run_in_background=true`, `model` は quality: `"opus"` / cost: `"sonnet"`）。各プロンプトを Read してプレースホルダー（`{INVENTORY_PATH}`, `{REQUIREMENTS_PATHS}`, `{tech_stack}`, 出力パス）を置換する。Agent Teams は使わない。
 
 | name | プロンプト | 出力 | 起動条件 |
 |---|---|---|---|
@@ -90,7 +90,7 @@ git ls-files | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -20
 
 ## STEP 4.5: プロジェクト規約の草案
 
-`doc/conventions.md` が無ければ、inventory と実コードから**観測できた**規約を草案として書く（`prompts/as-is-conventions.md`、`model="sonnet"`、同期）。命名パターン・ディレクトリ構成・エラー処理の流儀・テストの書き方・使っているリンタ設定を「現状こうなっている」として列挙し、`dev-flow-implementation/reference/conventions/<language>.md` と食い違う点は「言語標準と異なる（意図的か要確認）」と印を付ける。人間が STEP 5 で確認し、不要なら削除してよい。
+`doc/conventions.md` が無ければ、inventory と実コードから**観測できた**規約を草案として書く（`prompts/as-is-conventions.md`、`model` は quality: `"opus"` / cost: `"sonnet"`、同期）。命名パターン・ディレクトリ構成・エラー処理の流儀・テストの書き方・使っているリンタ設定を「現状こうなっている」として列挙し、`dev-flow-implementation/reference/conventions/<language>.md` と食い違う点は「言語標準と異なる（意図的か要確認）」と印を付ける。人間が STEP 5 で確認し、不要なら削除してよい。
 
 ## STEP 5: カバレッジ行列と人間レビュー
 

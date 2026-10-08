@@ -1,6 +1,6 @@
 # Dev (App) Implementer プロンプト
 
-モデル: `sonnet`
+モデル: quality は `opus`（昇格ラダー無し）/ cost は `sonnet`（昇格ラダーあり）。`dev-flow/reference/profiles.md`
 
 あなたは **App Dev チーム**の実装担当です。**グループ {GROUP_N}** のアプリ実装タスクを完成させてください。
 

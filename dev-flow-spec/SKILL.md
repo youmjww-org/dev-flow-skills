@@ -54,7 +54,7 @@ Agent Teams（`TeamCreate` / `team_name`）は使用しません。writer・revi
 
 ### 1a. writer の並列起動
 
-以下のうち起動条件を満たすものを **同一ターンで同時に**起動します（`run_in_background=true`, `model="sonnet"`）。プロンプトは各ファイルを Read し、プレースホルダーを実際の値に置換してから Agent に渡してください。
+以下のうち起動条件を満たすものを **同一ターンで同時に**起動します（`run_in_background=true`, `model` は quality: `"opus"` / cost: `"sonnet"`。`dev-flow/reference/profiles.md`）。プロンプトは各ファイルを Read し、プレースホルダーを実際の値に置換してから Agent に渡してください。
 
 | name | プロンプトファイル | プレースホルダー | 起動条件 |
 |---|---|---|---|
@@ -106,7 +106,7 @@ endpoints:
 
 ### 1b. reviewer の起動（writer 完了ごと）
 
-writer の完了通知を受け取るたびに、対応する reviewer を起動します（`run_in_background=true`, `model="sonnet"`）。他の writer の完了は待ちません。
+writer の完了通知を受け取るたびに、対応する reviewer を起動します（`run_in_background=true`, `model` は quality: `"opus"` / cost: `"sonnet"`）。他の writer の完了は待ちません。
 
 | writer | reviewer name | プロンプトファイル | プレースホルダー |
 |---|---|---|---|
@@ -157,7 +157,7 @@ AskUserQuestion ツールで以下を同時に提示してレビューを依頼�
 
 **SendMessage で再開できない場合（writer が破棄済み等）:**
 Agent ツールで同じ `name` を使って新規起動し、修正依頼プロンプトを直接渡してください。
-例: `Agent(name="test-spec-writer", run_in_background=true, model="sonnet", prompt="以下の指摘を反映して {TEST_SPEC_PATH} を修正してください: {指摘内容}。完了したら修正内容の要約を最終回答で返してください。")`
+例（cost の場合。quality では `model="opus"`）: `Agent(name="test-spec-writer", run_in_background=true, model="sonnet", prompt="以下の指摘を反映して {TEST_SPEC_PATH} を修正してください: {指摘内容}。完了したら修正内容の要約を最終回答で返してください。")`
 
 ---
 

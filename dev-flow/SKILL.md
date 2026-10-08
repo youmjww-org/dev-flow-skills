@@ -1,8 +1,8 @@
 ---
 name: dev-flow
-description: AI駆動開発フローのメインオーケストレーター。requirements → spec → consistency → implementation → test → compliance の 6 ステージをサブエージェント経由で順次実行します。新機能を要件定義から実装まで一気通貫で自動化したい時、または `doc/process/state.json` から既存フローを継続したい時に使用します。
-model: haiku
-argument-hint: "[--kind=feature|change|fix|refactor] [--from=stage] [--bootstrap] [--dry-run] タスク説明"
+description: AI駆動開発フローのメインオーケストレーター。requirements → spec → consistency → implementation → test → compliance の 6 ステージを順次実行します。既定（quality プロファイル）は速さと正確さを優先し、`--profile=cost` でコスト重視の流れに切り替えます。新機能を要件定義から実装まで一気通貫で自動化したい時、または `doc/process/state.json` から既存フローを継続したい時に使用します。
+model: opus
+argument-hint: "[--kind=feature|change|fix|refactor] [--profile=quality|cost] [--from=stage] [--bootstrap] [--dry-run] タスク説明"
 # allowed-tools はこのスキルを呼び出したターンの親セッションにだけ効く（サブエージェントは親のパーミッションモードを継承する）
 allowed-tools: Read Write Edit Bash Agent SendMessage TaskStop AskUserQuestion
 # コミット・worktree・PR 作成・自動マージまで行う副作用の大きいワークフローなので、起動は人間の /dev-flow に限定する
@@ -11,7 +11,16 @@ disable-model-invocation: true
 
 # 開発フローオーケストレーター
 
-あなたは開発フローの**メインオーケストレーター**です。状態ファイルを管理し、各ステージのスキルをサブエージェント経由で順次実行してフローを進めます。
+あなたは開発フローの**メインオーケストレーター**です。状態ファイルを管理し、各ステージのスキルを順次実行してフローを進めます。
+
+## 実行プロファイル
+
+| profile | 指定 | ステージの実行方法 | モデル |
+|---|---|---|---|
+| `quality`（既定） | 指定なし、または `--profile=quality` | オーケストレーター（このセッション）が各ステージの SKILL.md を全文読んで**直接実行**する | 末端の実行者（writer・implementer・レビュアー・test runner）も原則 opus。昇格ラダー無し。Dev / QA レビューは同時に起動 |
+| `cost` | `--profile=cost` | ステージごとに `stage-*-agent` を起動して任せる（従来の流れ） | 中間管理は haiku、末端は sonnet から始めて失敗時に昇格 |
+
+役割ごとのモデル・待ち時間・quality で直接実行するときの注意は `~/.claude/skills/dev-flow/reference/profiles.md` にまとめてある。**フロー開始時に必ず Read する**。下流スキル本文の `model="…"` は cost の値なので、quality では profiles.md の表の値に読み替える。
 
 ## ステージ一覧
 
@@ -22,7 +31,7 @@ disable-model-invocation: true
 | 3 | `consistency` | 整合性チェック（ID 整合性・カバレッジ行列・タスク分解・設計凍結） | `dev-flow-consistency` |
 | — | `plan_repair` | 計画修正（implementation 内部で発動する consistency の縮小版） | `dev-flow-consistency` |
 | 4 | `implementation` | 並列実装（worktree・Dev/QA・レビュー・PR） | `dev-flow-implementation` |
-| 5 | `test` | テスト実行（Haiku → Sonnet 昇格） | `dev-flow-test` |
+| 5 | `test` | テスト実行（quality: Opus / cost: Haiku → Sonnet 昇格） | `dev-flow-test` |
 | 6 | `compliance` | 準拠チェック・完了報告 | `dev-flow-compliance` |
 | 0 | `bootstrap` | 既存コードから as-is ドキュメントを逆生成する導入ステージ（既存プロジェクトで最初の 1 回だけ） | `dev-flow-bootstrap` |
 
@@ -49,9 +58,9 @@ disable-model-invocation: true
 
 状態ファイル: `doc/process/state.json`
 
-主要フィールド: `next_stage`（**次に実行する**ステージ名）/ `kind` / `task` / `mode`（full or incremental）/ `baseline_commit` / `tech_stack` / `implementation_progress`
+主要フィールド: `next_stage`（**次に実行する**ステージ名）/ `kind` / `task` / `profile`（`quality` or `cost`。無ければ `quality`）/ `mode`（full or incremental）/ `baseline_commit` / `tech_stack` / `implementation_progress`
 
-state.json は **compliance 完了後も削除しない**（`next_stage: "completed"` のまま残す）。`tech_stack` / 各ドキュメントパス / `is_*` フラグ / `baseline_commit` はプロジェクトの永続情報で、次の `change` / `fix` / `refactor` がそのまま使う。新しい run を始めるときは `next_stage` / `kind` / `task` / `harness.started_at` を書き換え、`implementation_progress` と `harness.stage_history` を初期化する。
+state.json は **compliance 完了後も削除しない**（`next_stage: "completed"` のまま残す）。`tech_stack` / 各ドキュメントパス / `is_*` フラグ / `baseline_commit` はプロジェクトの永続情報で、次の `change` / `fix` / `refactor` がそのまま使う。新しい run を始めるときは `next_stage` / `kind` / `task` / `profile` / `harness.started_at` を書き換え、`implementation_progress` と `harness.stage_history` を初期化する。
 
 旧スキーマ（`current_phase: "phase_2"` 等 = 完了フェーズ）の state.json を見つけたら、hook と同じ対応で `next_stage` に読み替えて書き直す: `phase_2→spec`, `phase_4→consistency`, `phase_4_5→implementation`, `phase_4_5_mini→plan_repair`, `phase_5→test`, `phase_6→compliance`。
 
@@ -77,6 +86,8 @@ state.json は **compliance 完了後も削除しない**（`next_stage: "comple
 | `gh pr merge` 実行前 | `pr-merge-guard.sh` | 自動マージ条件（ベースブランチ・CI・コンフリクト・DB 破壊的変更・テスト削除/スキップ・`--merge`）を検証し、満たさなければ `deny`。`main` / `develop` 向けは常に拒否 |
 | セッション開始 / 応答完了 | `session-start.sh` / `stop-summary.sh` | 進行中フローの次ステージとアクションを表示。ブランチが origin より遅れていれば警告 |
 | 状況報告・ステージ移行の前（hook ではなく Bash から呼ぶ） | `verify-remote-state.sh` | `git fetch` してブランチの ahead / behind、PR の state と CI の結果を 1 行ずつ OK / NG で出す。下の「状況報告のルール」を参照 |
+
+`pre-agent-check.sh` と `agent-complete.sh` は `stage-*-agent` の起動時だけ動くので、ステージを直接実行する quality では動かない。その分の確認（プランモード・ループ検出・`harness.stage_history` の記録）は `reference/profiles.md` の「quality でオーケストレーターが直接実行するときの注意」に従って自分で行う。
 
 hook からの `additionalContext` に「task_checklist.md のステージ進捗は自動同期済み」とあれば STEP 5-2 の Edit をスキップする。`deny` / `ask` された場合は理由を人間に伝え、勝手に回避策を取らない。
 
@@ -105,7 +116,7 @@ hook からの `additionalContext` に「task_checklist.md のステージ進捗
 
 サブエージェントは**親セッションのパーミッションモードを継承**する（Agent ツールの `mode` 引数は無視される）。そのため：
 
-- **プランモード（読み取り専用）で `/dev-flow` を起動しない。** writer / implementer が書き込めずに止まる。hook 導入環境では `pre-agent-check.sh` が `permission_mode = "plan"` のとき `stage-*-agent` の起動を `deny` する。deny されたら「プランモードを抜けて（Shift+Tab）から再実行してください」と案内して終了する
+- **プランモード（読み取り専用）で `/dev-flow` を起動しない。** writer / implementer が書き込めずに止まる。hook 導入環境では `pre-agent-check.sh` が `permission_mode = "plan"` のとき `stage-*-agent` の起動を `deny` する。deny されたら「プランモードを抜けて（Shift+Tab）から再実行してください」と案内して終了する。quality は `stage-*-agent` を起動しないので hook では止まらない。プランモードだと分かった時点で同じ案内をして終了する
 - 推奨は `acceptEdits` 以上。`default` でも動くが、各サブエージェントの Write / Bash がすべて親セッションの確認プロンプトに上がってくる
 - 計画はプランモードではなく requirements / spec / consistency のドキュメントと人間確認ゲートが担う。プランモードを併用しない
 
@@ -164,6 +175,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 
 - **TASK**: `--` で始まらない部分
 - **KIND**: `--kind=` の値（`feature` / `change` / `fix` / `refactor`）。未指定時は STEP 1.5 で決める
+- **PROFILE**: `--profile=` の値（`quality` / `cost`）。未指定なら state.json の `profile`（進行中 run の再開時）、それも無ければ `quality`。上記以外の値は無効として有効値を提示する
 - **BOOTSTRAP**: 引数に `"--bootstrap"` が含まれる場合は `true`。STEP 1.5 の判定を飛ばして `bootstrap` ステージを起動する
 - **FROM**: `--from=` の値（指定時は state.json の `next_stage` にその値を書いてから開始する）
 - **DRY_RUN**: 引数に `"--dry-run"` が含まれる場合は `true`。サブエージェントを起動せずフロー構成を検証して終了する
@@ -171,6 +183,8 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 `--from` の有効値はステージ名そのもの（`requirements` / `spec` / `consistency` / `implementation` / `test` / `compliance`）。`requirements` は state.json 不要（requirements ステージが生成する）、それ以外は必要。`plan_repair` は `--from` では指定できない（implementation 内部からのみ遷移）。
 
 上記以外の値は無効。`reference/error-handling.md` の手順で有効値を提示する。`--from` による書き換えは STEP 2 で行い、hook 導入環境では `state-sync.sh` が同時に `task_checklist.md` を巻き戻す。
+
+PROFILE が決まったら、ステージを始める前に `reference/profiles.md` を Read する（`--dry-run` を除く）。
 
 `--no-gui` / `--no-api` のようなプロジェクトタイプ指定フラグは**存在しない**。`is_gui` / `is_api` / `is_infra` / `is_e2e` は requirements ステージが対話で確定して state.json に書く。
 
@@ -186,16 +200,17 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 **`--dry-run` 時の出力例:**
 
 ```
-[dry-run] 実行計画:
-  1. requirements: stage-requirements-agent (opus)  ← 下流スキル: 存在 ✓
-  2. spec:         stage-spec-agent (haiku)          ← 下流スキル: 欠損 ✗  ~/.claude/skills/dev-flow-spec/SKILL.md が見つかりません
+[dry-run] 実行計画（profile=quality）:
+  1. requirements: オーケストレーターが直接実行 (opus)  ← 下流スキル: 存在 ✓
+  2. spec:         オーケストレーターが直接実行 (opus)  ← 下流スキル: 欠損 ✗  ~/.claude/skills/dev-flow-spec/SKILL.md が見つかりません
   ...
+（profile=cost の場合は「stage-spec-agent (haiku)」のように起動するエージェントとモデルを出す）
 ✅ 全スキルファイル確認完了 / ❌ 欠損スキルあり。setup.sh を実行してください。
 ```
 
 ### STEP 1.5: 変更種別（kind）と開発モードの判定
 
-`--from` 指定時、または state.json の `next_stage` が `completed` 以外で進行中のときはスキップ（進行中 run の `kind` をそのまま使う）。
+`--from` 指定時、または state.json の `next_stage` が `completed` 以外で進行中のときはスキップ（進行中 run の `kind` をそのまま使う）。ただし `--profile=` が明示されていて state.json の `profile` と違う場合は、`profile` だけ書き換える（途中から切り替えてよい）。
 
 **1. 既存実装の確認:**
 
@@ -224,8 +239,8 @@ KIND が未指定なら AskUserQuestion で確認（TASK の文面から推測�
 
 **3. state.json への書き込み:**
 
-- state.json が無い（`feature` / `change` で bootstrap を飛ばした場合）→ requirements ステージが生成するので、`kind` / `task` / `mode` / `baseline_commit` をプロンプトで渡す
-- state.json がある → `next_stage` を kind の最初のステージ、`kind`、`task`、`harness.started_at` を書き換え、`implementation_progress` を削除、`harness.stage_history` を `[]` にして保存
+- state.json が無い（`feature` / `change` で bootstrap を飛ばした場合）→ requirements ステージが生成するので、`kind` / `task` / `profile` / `mode` / `baseline_commit` を渡す（quality では自分で requirements を実行するので、state.json を書くときにこれらを入れる）
+- state.json がある → `next_stage` を kind の最初のステージ、`kind`、`task`、`profile`、`harness.started_at` を書き換え、`implementation_progress` を削除、`harness.stage_history` を `[]` にして保存
 
 ### STEP 2: 状態ファイルの読み込み
 
@@ -246,19 +261,31 @@ KIND が未指定なら AskUserQuestion で確認（TASK の文面から推測�
 
 **2. 無限ループ検出:** 同じ `(stage, agent_name)` の組み合わせが `harness.stage_history` に5回以上あれば AskUserQuestion で確認。
 
-**3. タイムアウト目安:** haiku=5分 / sonnet=15分 / opus=30分。超過時は AskUserQuestion で人間に確認する前に、まず `reference/agent-hang-recovery.md` の検知手順でハング（環境起因で pane 型サブエージェントが一切ツールを実行しない状態）かどうかを切り分ける。
+**3. タイムアウト目安:** haiku=5分 / sonnet=15分 / opus=30分（cost）。quality はモデルに関係なく起動 5 分後に一次確認し、生存確認に 3 分応答が無ければハングとみなす（`reference/profiles.md`「待ち時間とハング検知」）。超過時は AskUserQuestion で人間に確認する前に、まず `reference/agent-hang-recovery.md` の検知手順でハング（環境起因で pane 型サブエージェントが一切ツールを実行しない状態）かどうかを切り分ける。
 
-**STEP 4 で起動する `stage-*-agent`（中間管理エージェント）がハングした場合は fork フォールバックを使わない**（fork は `Agent` ツールで子サブエージェントを起動できないため、`stage-implementation-agent` のように内部で Dev/QA/レビュアーをさらに起動する設計のエージェントでは fork にしても実質何もできず終了する。実地で確認済み）。この場合は `reference/agent-hang-recovery.md` の「中間管理エージェントがハングした場合」の手順に従い、**オーケストレーター（このセッション）が該当ステージのスキル（`~/.claude/skills/dev-flow-<stage>/SKILL.md`）を自分で読み込み、STEP 0 以降を直接実行する**（worktree 作成・state.json 更新・Dev/QA/レビュアーの起動を自分の Agent ツールで行う。これらは末端の実行者なので通常どおり fork フォールバックが効く）。
+**cost で STEP 4 で起動する `stage-*-agent`（中間管理エージェント）がハングした場合は fork フォールバックを使わない**（fork は `Agent` ツールで子サブエージェントを起動できないため、`stage-implementation-agent` のように内部で Dev/QA/レビュアーをさらに起動する設計のエージェントでは fork にしても実質何もできず終了する。実地で確認済み）。この場合は `reference/agent-hang-recovery.md` の「中間管理エージェントがハングした場合」の手順に従い、**オーケストレーター（このセッション）が該当ステージのスキル（`~/.claude/skills/dev-flow-<stage>/SKILL.md`）を自分で読み込み、STEP 0 以降を直接実行する**（worktree 作成・state.json 更新・Dev/QA/レビュアーの起動を自分の Agent ツールで行う。これらは末端の実行者なので通常どおり fork フォールバックが効く）。
 
 単に処理が長い場合（ハングでない）は従来どおり AskUserQuestion で人間に確認する。
 
 1・2 は hook 導入環境では `pre-agent-check.sh` が Agent 起動時に機械的に検証する（違反時は `ask` で停止）。実測の所要時間は `doc/process/flow.log` の `duration_seconds` で確認できる。
 
-### STEP 4: タスクを作成してサブエージェントを起動
+### STEP 4: ステージを実行する
+
+**quality（既定）: オーケストレーターが直接実行する**
+
+0. 同じ stage が `stage_history` に既に 5 回以上あれば、始める前に AskUserQuestion で確認する（cost では hook がやる確認）
+1. 起動前に「▶ {タスク名} を開始（直接実行 / opus）」と一行で表示し、`harness.stage_history` に `{stage, model: "opus", started_at}` を追記する
+2. 下の対応表のスキルファイルを**全文** Read し、そのスキルの STEP 0 から順に自分で実行する（抜き出し・要約はしない）。stage-*-agent 向けに書かれた箇所の読み替えは `reference/profiles.md` に従う
+3. スキル内で Writer・Dev/QA implementer・レビュアー・test runner などの末端の実行者を起動するときは、`reference/profiles.md`「役割ごとのモデル」の quality 列のモデルを `Agent(model=…)` に渡す
+4. そのステージの出口（state.json の `next_stage` が次に進んだ、または人間待ち・エスカレーションで止まった）に来たら `stage_history` の該当要素に `completed_at` / `duration_seconds` を書き、STEP 5 へ進む
+
+**cost（`--profile=cost`）: ステージエージェントに任せる**
+
+以下の対応表と「サブエージェント起動」に従う。
 
 **ステージ対応表:**
 
-| next_stage | タスク名 | エージェント name | モデル | スキルファイル |
+| next_stage | タスク名 | エージェント name（cost） | モデル（cost） | スキルファイル |
 |---|---|---|---|---|
 | なし / `requirements` | 1. requirements: 要件定義 | `stage-requirements-agent` | opus | `dev-flow-requirements/SKILL.md` |
 | `spec` | 2. spec: 仕様書生成 | `stage-spec-agent` | haiku | `dev-flow-spec/SKILL.md` |
@@ -283,11 +310,13 @@ Plan Repair によって設定される一時ステージ。発動シーケン�
 | 4 | `stage-plan-repair-agent` | 未着手グループのみチェックリストを再生成し、完了後 `next_stage` を `"implementation"` に書き戻して終了 |
 | 5 | `dev-flow` オーケストレーター | `next_stage = "implementation"` を検出して implementation を未着手グループから再開 |
 
+quality では、表の `stage-implementation-agent` と `stage-plan-repair-agent` はどちらもオーケストレーター自身と読み替える（「終了」は STEP 5 に戻ること。`next_stage = "plan_repair"` を見たら、そのまま consistency の mini モードを実行する）。
+
 Plan Repair の発動上限は **3 回**。超過時は `requirement_ambiguity` として人間エスカレーション。詳細は `~/.claude/skills/dev-flow-implementation/SKILL.md` の「Plan Repair フロー」および `dev-flow-implementation/reference/plan-repair.md` を参照。
 
-**進捗の表示:** 起動前に「▶ {タスク名} を開始（{エージェント name} / {モデル}）」と人間に一行で表示する。Task 系ツール（`TaskCreate` 等）は使わない。進捗の永続化は `task_checklist.md` と `flow.log`（hook）が担う。
+**進捗の表示:** cost では起動前に「▶ {タスク名} を開始（{エージェント name} / {モデル}）」と人間に一行で表示する。Task 系ツール（`TaskCreate` 等）は使わない。進捗の永続化は `task_checklist.md` と `flow.log`（hook）が担う。
 
-**サブエージェント起動:** オーケストレーターがスキルファイルを事前 Read し、ステージに必要なセクションのみ抽出してプロンプトに直接埋め込む（トークン削減）。2000トークン以下なら全文渡し可。
+**サブエージェント起動（cost）:** オーケストレーターがスキルファイルを事前 Read し、ステージに必要なセクションのみ抽出してプロンプトに直接埋め込む（トークン削減）。2000トークン以下なら全文渡し可。
 
 | stage | 渡すセクション | 省略するセクション |
 |---|---|---|
@@ -320,20 +349,20 @@ Agent(
 
 **モデル指定のルール:**
 
-- 上のステージ対応表に書かれた `モデル` 列は、各下流スキルの frontmatter (`model:`) と一致しており、その値をそのまま `Agent(model=…)` に渡す
-- スキル frontmatter のモデルは**スキル作者が品質とコストを勘案して選択した値**であり、オーケストレーター側で勝手に上書きしない
-- 上書きが必要な場合（例: テスト目的・ユーザー指定）は AskUserQuestion で人間に確認してから変更する
-- ステージ対応表とスキル frontmatter が食い違っている場合はスキル frontmatter を信頼し、表側を修正する
+- モデルは `reference/profiles.md`「役割ごとのモデル」の、run の `profile` の列に従う。表に無い値に勝手に変えない
+- cost のステージ対応表の `モデル` 列は各下流スキルの frontmatter (`model:`) と一致しており、その値をそのまま `Agent(model=…)` に渡す。食い違っている場合はスキル frontmatter を信頼し、表側を修正する
+- 下流スキル本文に書かれた末端の実行者の `model="…"` は cost の値。quality では profiles.md の quality 列で置き換える
+- 表と違うモデルを使いたい場合（例: テスト目的・ユーザー指定）は AskUserQuestion で人間に確認してから変更する
 
 **ステージ間依存関係と run_in_background:**
 
 | stage | 並列実行可否 | run_in_background |
 |---|---|---|
 | requirements〜consistency | 不可（直列） | false |
-| implementation 各グループ | グループ間は可（implementation エージェント内で `run_in_background=true`） | false（PR マージは待たずに終了して再入する） |
+| implementation 各グループ | グループ間は可（implementation の手順内で `run_in_background=true`）。quality では同じグループの Dev レビューと QA レビューも同時に起動する | false（PR マージは待たずに終了して再入する） |
 | test〜compliance | 不可（直列） | false |
 
-implementation 内のグループ並列化は `stage-implementation-agent` が名前付きサブエージェントの完了通知（最終回答）で管理する。Agent Teams（`TeamCreate` / `team_name`）は使わない。Cross グループは直列。
+implementation 内のグループ並列化は、implementation の手順を実行している者（quality ではオーケストレーター、cost では `stage-implementation-agent`）が名前付きサブエージェントの完了通知（最終回答）で管理する。Agent Teams（`TeamCreate` / `team_name`）は使わない。Cross グループは直列。
 
 **implementation の PR マージの責任分担（非ブロッキング）:**
 
@@ -341,8 +370,8 @@ implementation 内のグループ並列化は `stage-implementation-agent` が�
 
 | アクター | 責任 |
 |---|---|
-| `stage-implementation-agent`（サブエージェント） | グループの実装完了後に `gh pr create` で PR を作成し、番号を `implementation_progress.pr_numbers["group-N"]`（**配列**。1 グループ 2〜4 PR）へ記録。続けて各 PR に `gh pr merge <N> --merge` を試行する。hook（`pr-merge-guard.sh`）が自動マージ条件を検証し、満たさなければ deny される。全 PR がマージ済みになったグループは STEP H で `completed_groups` へ追加。deny された PR が残るグループは「人間マージ待ち」とし、依存の無い他グループがあれば続行、無ければ人間に PR URL と deny 理由を提示して**終了**する |
-| `dev-flow` オーケストレーター | `next_stage = "implementation"` で `implementation_progress` が残っていればそのまま `stage-implementation-agent` を起動する（PR 状態の確認と取り込みは implementation 側の再開処理が行う）。自分で `gh pr view` をポーリングしない |
+| implementation の実行者（quality: オーケストレーター / cost: `stage-implementation-agent`） | グループの実装完了後に `gh pr create` で PR を作成し、番号を `implementation_progress.pr_numbers["group-N"]`（**配列**。1 グループ 2〜4 PR）へ記録。続けて各 PR に `gh pr merge <N> --merge` を試行する。hook（`pr-merge-guard.sh`）が自動マージ条件を検証し、満たさなければ deny される。全 PR がマージ済みになったグループは STEP H で `completed_groups` へ追加。deny された PR が残るグループは「人間マージ待ち」とし、依存の無い他グループがあれば続行、無ければ人間に PR URL と deny 理由を提示して**終了**する |
+| `dev-flow` オーケストレーター | `next_stage = "implementation"` で `implementation_progress` が残っていれば、そのまま implementation を再開する（quality は自分で、cost は `stage-implementation-agent` を起動する）（PR 状態の確認と取り込みは implementation 側の再開処理が行う）。自分で `gh pr view` をポーリングしない |
 | 人間 | 自動マージ条件を満たさない PR のレビュー・マージ。`main` / `develop` 向け PR は常に人間がマージする |
 
 **自動マージ条件（hook が機械的に検証する。プロンプトで緩和できない）:**

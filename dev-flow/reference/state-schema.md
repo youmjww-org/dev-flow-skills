@@ -9,6 +9,7 @@
   "next_stage": "spec",
   "kind": "feature",
   "task": "ユーザー認証機能を追加する",
+  "profile": "quality",
   "mode": "full",
   "baseline_commit": null,
   "requirements_paths": ["doc/requirements/feature.md"],
@@ -71,6 +72,7 @@
 |---|---|
 | `next_stage` | **次に実行する**ステージ名（`spec` / `consistency` / `plan_repair` / `implementation` / `test` / `compliance` / `completed`）。`null` または欠損 = requirements から開始。compliance 完了時は `"completed"` を書く（state.json は**削除しない**。`tech_stack` 等の永続情報を次の run が使う）。旧スキーマの `current_phase`（完了フェーズ: `phase_2` 等）は hook が `phase_2→spec, phase_4→consistency, phase_4_5→implementation, phase_4_5_mini→plan_repair, phase_5→test, phase_6→compliance` で読み替える |
 | `kind` | 変更種別 `"feature"` / `"change"` / `"fix"` / `"refactor"`。通るステージが変わる（`dev-flow/SKILL.md` の「変更種別」参照） |
+| `profile` | 実行プロファイル `"quality"`（既定）/ `"cost"`。モデル・ステージの実行方法・待ち時間が変わる（`reference/profiles.md`）。欠損時は `quality`。`/dev-flow --profile=...` で run の途中でも書き換えられる |
 | `task` | オーケストレーターの引数 TASK（人間が書いた変更内容）。spec の `fix` 再現 TC や consistency の lite チェックリストが参照する |
 | `mode` | `"full"`（新規）/ `"incremental"`（差分のみ）。実装コードがある時点で `incremental` |
 | `baseline_commit` | `incremental` 時のみ設定。設定主体・更新主体・参照範囲は下記「baseline_commit のライフサイクル」を参照 |

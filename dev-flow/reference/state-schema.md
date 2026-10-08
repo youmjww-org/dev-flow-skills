@@ -2,6 +2,14 @@
 
 `doc/process/state.json` の完全なスキーマと各フィールドの説明。
 
+## 目次
+
+- 完全スキーマ
+- フィールド説明
+- baseline_commit のライフサイクル
+- skill_versions の取得
+- implementation の PR マージ待機ロジック
+
 ## 完全スキーマ
 
 ```json

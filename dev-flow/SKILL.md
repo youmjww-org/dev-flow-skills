@@ -2,6 +2,7 @@
 name: dev-flow
 description: AI駆動開発フローのメインオーケストレーター。requirements → spec → consistency → implementation → test → compliance の 6 ステージを順次実行します。既定（quality プロファイル）は速さと正確さを優先し、`--profile=cost` でコスト重視の流れに切り替えます。新機能を要件定義から実装まで一気通貫で自動化したい時、または `doc/process/state.json` から既存フローを継続したい時に使用します。
 model: opus
+effort: high
 argument-hint: "[--kind=feature|change|fix|refactor] [--profile=quality|cost] [--from=stage] [--bootstrap] [--dry-run] [--help] [--man [topic]] タスク説明"
 # allowed-tools はこのスキルを呼び出したターンの親セッションにだけ効く（サブエージェントは親のパーミッションモードを継承する）
 allowed-tools: Read Write Edit Bash Agent SendMessage TaskStop AskUserQuestion
@@ -19,8 +20,8 @@ disable-model-invocation: true
 
 | 引数 | 表示するもの |
 |---|---|
-| `--help` / `-h` | `~/.claude/skills/dev-flow/reference/help.md` を Read し、中身をそのままコードブロックで出す |
-| `--man`（トピックなし） | `~/.claude/skills/dev-flow/reference/manual.md` を Read し、全文をそのまま出す |
+| `--help` / `-h` | `${CLAUDE_SKILL_DIR}/reference/help.md` を Read し、中身をそのままコードブロックで出す |
+| `--man`（トピックなし） | `${CLAUDE_SKILL_DIR}/reference/manual.md` を Read し、全文をそのまま出す |
 | `--man <topic>` / `--man=<topic>` | `manual.md` の見出しに `{#<topic>}` が付いた節だけを出す（見出しの `{#…}` は表示から外す）。該当が無ければ「トピックが見つかりません」と有効なトピック（`options` `kinds` `profiles` `stages` `state` `hooks` `merge` `outputs` `troubleshooting`）を出す |
 
 `--help` と `--man` の両方があれば `--man` を優先する。表示の最後に、「起動時コンテキスト › 現在の state.json」から現在の状態を 1 行添える（例:「現在: next_stage=implementation / kind=feature / profile=quality」、state.json が無ければ「現在: 進行中の run なし」）。要約や言い換えはしない。
@@ -32,7 +33,12 @@ disable-model-invocation: true
 | `quality`（既定） | 指定なし、または `--profile=quality` | オーケストレーター（このセッション）が各ステージの SKILL.md を全文読んで**直接実行**する | 末端の実行者（writer・implementer・レビュアー・test runner）も原則 opus。昇格ラダー無し。Dev / QA レビューは同時に起動 |
 | `cost` | `--profile=cost` | ステージごとに `stage-*-agent` を起動して任せる（従来の流れ） | 中間管理は haiku、末端は sonnet から始めて失敗時に昇格 |
 
-役割ごとのモデル・待ち時間・quality で直接実行するときの注意は `~/.claude/skills/dev-flow/reference/profiles.md` にまとめてある。**フロー開始時に必ず Read する**。下流スキル本文の `model="…"` は cost の値なので、quality では profiles.md の表の値に読み替える。
+**quality はオーケストレーター自身が Opus であることが前提。** frontmatter の `model: opus` / `effort: high` は `/dev-flow` を起動したターンにしか効かず、人間が途中で普通のメッセージを返すと、セッションで選ばれているモデルに戻る。そのため：
+
+- ステージを始める前に、自分（今このターンを動かしているモデル）が Opus かを確かめる。Opus でなければ何も実行せず、「quality は Opus 前提です。`/dev-flow` を打ち直すか、`/model opus` に切り替えてから再実行してください（`--profile=cost` なら今のモデルのままでも進められます）」と伝えて終了する
+- 人間に判断を仰ぐときは AskUserQuestion を使う（同じターンの中で続けられる）。普通のメッセージで質問して止まらない。止まるときは「続きは `/dev-flow` で再開してください」と案内する
+
+役割ごとのモデル・待ち時間・quality で直接実行するときの注意は `${CLAUDE_SKILL_DIR}/reference/profiles.md` にまとめてある。**フロー開始時に必ず Read する**。下流スキル本文の `model="…"` は cost の値なので、quality では profiles.md の表の値に読み替える。
 
 ## ステージ一覧
 
@@ -77,13 +83,13 @@ state.json は **compliance 完了後も削除しない**（`next_stage: "comple
 旧スキーマ（`current_phase: "phase_2"` 等 = 完了フェーズ）の state.json を見つけたら、hook と同じ対応で `next_stage` に読み替えて書き直す: `phase_2→spec`, `phase_4→consistency`, `phase_4_5→implementation`, `phase_4_5_mini→plan_repair`, `phase_5→test`, `phase_6→compliance`。
 
 スキーマ詳細・PR マージ待機ロジック・harness メタデータは必要時に Read すること:
-`~/.claude/skills/dev-flow/reference/state-schema.md`
+`${CLAUDE_SKILL_DIR}/reference/state-schema.md`
 
 ---
 
 ## Hook 連携
 
-`setup.sh` が `~/.claude/settings.json` に登録する hooks（`~/.claude/skills/dev-flow/hooks/`）が、以下を**プロンプトの指示ではなく決定的に**実行する。hook が動作している環境では該当ステップの手動実施は不要（結果は `additionalContext` で通知される）。hook 未導入の環境（`setup.sh --no-hooks`）では各 STEP の記述どおり手動で行う。
+`setup.sh` が `~/.claude/settings.json` に登録する hooks（`${CLAUDE_SKILL_DIR}/hooks/`）が、以下を**プロンプトの指示ではなく決定的に**実行する。hook が動作している環境では該当ステップの手動実施は不要（結果は `additionalContext` で通知される）。hook 未導入の環境（`setup.sh --no-hooks`）では各 STEP の記述どおり手動で行う。
 
 | タイミング | hook | オーケストレーターへの影響 |
 |---|---|---|
@@ -113,7 +119,7 @@ hook からの `additionalContext` に「task_checklist.md のステージ進捗
 
 | 言いたいこと | 先に実行するもの |
 |---|---|
-| PR・CI の状態、ブランチの同期 | `~/.claude/skills/dev-flow/hooks/verify-remote-state.sh [--expect-merged] [PR番号...]`（出力の OK / NG 行を貼る） |
+| PR・CI の状態、ブランチの同期 | `${CLAUDE_SKILL_DIR}/hooks/verify-remote-state.sh [--expect-merged] [PR番号...]`（出力の OK / NG 行を貼る） |
 | CI が失敗した理由 | `gh run view <run-id> --log-failed`（コード起因か環境起因か分けて書く） |
 | テストが通った | テストコマンドの実行結果の件数行（`Tests: 65 passed` 等）。ブランチが origin と同期していることを先に確認する |
 | テスト・ファイルが存在する | `git ls-files <パス>` / `grep -rn 'TC-0NN'` の結果 |
@@ -215,7 +221,7 @@ PROFILE が決まったら、ステージを始める前に `reference/profiles.
 ```
 [dry-run] 実行計画（profile=quality）:
   1. requirements: オーケストレーターが直接実行 (opus)  ← 下流スキル: 存在 ✓
-  2. spec:         オーケストレーターが直接実行 (opus)  ← 下流スキル: 欠損 ✗  ~/.claude/skills/dev-flow-spec/SKILL.md が見つかりません
+  2. spec:         オーケストレーターが直接実行 (opus)  ← 下流スキル: 欠損 ✗  ${CLAUDE_SKILL_DIR}/../dev-flow-spec/SKILL.md が見つかりません
   ...
 （profile=cost の場合は「stage-spec-agent (haiku)」のように起動するエージェントとモデルを出す）
 ✅ 全スキルファイル確認完了 / ❌ 欠損スキルあり。setup.sh を実行してください。
@@ -276,7 +282,7 @@ KIND が未指定なら AskUserQuestion で確認（TASK の文面から推測�
 
 **3. タイムアウト目安:** haiku=5分 / sonnet=15分 / opus=30分（cost）。quality はモデルに関係なく起動 5 分後に一次確認し、生存確認に 3 分応答が無ければハングとみなす（`reference/profiles.md`「待ち時間とハング検知」）。超過時は AskUserQuestion で人間に確認する前に、まず `reference/agent-hang-recovery.md` の検知手順でハング（環境起因で pane 型サブエージェントが一切ツールを実行しない状態）かどうかを切り分ける。
 
-**cost で STEP 4 で起動する `stage-*-agent`（中間管理エージェント）がハングした場合は fork フォールバックを使わない**（fork は `Agent` ツールで子サブエージェントを起動できないため、`stage-implementation-agent` のように内部で Dev/QA/レビュアーをさらに起動する設計のエージェントでは fork にしても実質何もできず終了する。実地で確認済み）。この場合は `reference/agent-hang-recovery.md` の「中間管理エージェントがハングした場合」の手順に従い、**オーケストレーター（このセッション）が該当ステージのスキル（`~/.claude/skills/dev-flow-<stage>/SKILL.md`）を自分で読み込み、STEP 0 以降を直接実行する**（worktree 作成・state.json 更新・Dev/QA/レビュアーの起動を自分の Agent ツールで行う。これらは末端の実行者なので通常どおり fork フォールバックが効く）。
+**cost で STEP 4 で起動する `stage-*-agent`（中間管理エージェント）がハングした場合は fork フォールバックを使わない**（fork は `Agent` ツールで子サブエージェントを起動できないため、`stage-implementation-agent` のように内部で Dev/QA/レビュアーをさらに起動する設計のエージェントでは fork にしても実質何もできず終了する。実地で確認済み）。この場合は `reference/agent-hang-recovery.md` の「中間管理エージェントがハングした場合」の手順に従い、**オーケストレーター（このセッション）が該当ステージのスキル（`${CLAUDE_SKILL_DIR}/../dev-flow-<stage>/SKILL.md`）を自分で読み込み、STEP 0 以降を直接実行する**（worktree 作成・state.json 更新・Dev/QA/レビュアーの起動を自分の Agent ツールで行う。これらは末端の実行者なので通常どおり fork フォールバックが効く）。
 
 単に処理が長い場合（ハングでない）は従来どおり AskUserQuestion で人間に確認する。
 
@@ -288,7 +294,7 @@ KIND が未指定なら AskUserQuestion で確認（TASK の文面から推測�
 
 0. 同じ stage が `stage_history` に既に 5 回以上あれば、始める前に AskUserQuestion で確認する（cost では hook がやる確認）
 1. 起動前に「▶ {タスク名} を開始（直接実行 / opus）」と一行で表示し、`harness.stage_history` に `{stage, model: "opus", started_at}` を追記する
-2. 下の対応表のスキルファイルを**全文** Read し、そのスキルの STEP 0 から順に自分で実行する（抜き出し・要約はしない）。stage-*-agent 向けに書かれた箇所の読み替えは `reference/profiles.md` に従う
+2. 下の対応表のスキルファイルを**全文** Read し、そのスキルの STEP 0 から順に自分で実行する（抜き出し・要約はしない）。Read で読んだ SKILL.md では変数が展開されないので、本文中の `CLAUDE_SKILL_DIR` 変数（ドル記号と波括弧付きで書かれている）は、そのスキルのディレクトリ（`${CLAUDE_SKILL_DIR}/../dev-flow-<stage>`）と読み替える。stage-*-agent 向けに書かれた箇所の読み替えは `reference/profiles.md` に従う
 3. スキル内で Writer・Dev/QA implementer・レビュアー・test runner などの末端の実行者を起動するときは、`reference/profiles.md`「役割ごとのモデル」の quality 列のモデルを `Agent(model=…)` に渡す
 4. そのステージの出口（state.json の `next_stage` が次に進んだ、または人間待ち・エスカレーションで止まった）に来たら `stage_history` の該当要素に `completed_at` / `duration_seconds` を書き、STEP 5 へ進む
 
@@ -309,7 +315,7 @@ KIND が未指定なら AskUserQuestion で確認（TASK の文面から推測�
 | `compliance` | 6. compliance: 準拠チェック・完了 | `stage-compliance-agent` | opus | `dev-flow-compliance/SKILL.md` |
 | （state.json なし・`--bootstrap` または STEP 1.5 で選択） | 0. bootstrap: as-is ドキュメント生成 | `stage-bootstrap-agent` | opus | `dev-flow-bootstrap/SKILL.md` |
 
-スキルファイルのパスはすべて `~/.claude/skills/` 配下。
+スキルファイルはすべて dev-flow と同じ階層（`${CLAUDE_SKILL_DIR}/../dev-flow-<stage>/SKILL.md`）にある。
 
 **`plan_repair` 特別処理:**
 
@@ -325,11 +331,11 @@ Plan Repair によって設定される一時ステージ。発動シーケン�
 
 quality では、表の `stage-implementation-agent` と `stage-plan-repair-agent` はどちらもオーケストレーター自身と読み替える（「終了」は STEP 5 に戻ること。`next_stage = "plan_repair"` を見たら、そのまま consistency の mini モードを実行する）。
 
-Plan Repair の発動上限は **3 回**。超過時は `requirement_ambiguity` として人間エスカレーション。詳細は `~/.claude/skills/dev-flow-implementation/SKILL.md` の「Plan Repair フロー」および `dev-flow-implementation/reference/plan-repair.md` を参照。
+Plan Repair の発動上限は **3 回**。超過時は `requirement_ambiguity` として人間エスカレーション。詳細は `${CLAUDE_SKILL_DIR}/../dev-flow-implementation/SKILL.md` の「Plan Repair フロー」および `dev-flow-implementation/reference/plan-repair.md` を参照。
 
 **進捗の表示:** cost では起動前に「▶ {タスク名} を開始（{エージェント name} / {モデル}）」と人間に一行で表示する。Task 系ツール（`TaskCreate` 等）は使わない。進捗の永続化は `task_checklist.md` と `flow.log`（hook）が担う。
 
-**サブエージェント起動（cost）:** オーケストレーターがスキルファイルを事前 Read し、ステージに必要なセクションのみ抽出してプロンプトに直接埋め込む（トークン削減）。2000トークン以下なら全文渡し可。
+**サブエージェント起動（cost）:** オーケストレーターがスキルファイルを事前 Read し、ステージに必要なセクションのみ抽出してプロンプトに直接埋め込む（トークン削減）。埋め込む前に、本文中の `CLAUDE_SKILL_DIR` 変数（ドル記号と波括弧付き）を、そのスキルの実際のディレクトリ（`${CLAUDE_SKILL_DIR}/../dev-flow-<stage>`）に置き換える。2000トークン以下なら全文渡し可。
 
 | stage | 渡すセクション | 省略するセクション |
 |---|---|---|
@@ -398,7 +404,7 @@ implementation 内のグループ並列化は、implementation の手順を実�
 
 **hook 未導入環境では自動マージを行わない。** 「起動時コンテキスト › hooks の登録状況」が `disabled` なら `gh pr merge` を一切発行せず人間に委ねる（impl エージェントにもその旨をプロンプトで伝える）。
 
-詳細は `~/.claude/skills/dev-flow/reference/state-schema.md` の「implementation の PR マージ待機ロジック」を参照。
+詳細は `${CLAUDE_SKILL_DIR}/reference/state-schema.md` の「implementation の PR マージ待機ロジック」を参照。
 
 ### STEP 5: タスク完了 & チェックリスト更新 & 次ステージへの移行判定
 
@@ -432,13 +438,13 @@ implementation 内のグループ並列化は、implementation の手順を実�
 エスカレーションが必要な場合は `doc/process/escalation_{stage}_{timestamp}.md` を生成して AskUserQuestion で提示する。
 
 フォーマット・recovery パス詳細は Read すること:
-`~/.claude/skills/dev-flow/reference/escalation-format.md`
+`${CLAUDE_SKILL_DIR}/reference/escalation-format.md`
 
 ---
 
 ## エラーハンドリング
 
 エラー対処の詳細は Read すること:
-`~/.claude/skills/dev-flow/reference/error-handling.md`
+`${CLAUDE_SKILL_DIR}/reference/error-handling.md`
 
 主なケース: state.json 破損・Agent 起動失敗・サブエージェント停止・チェックリスト更新失敗

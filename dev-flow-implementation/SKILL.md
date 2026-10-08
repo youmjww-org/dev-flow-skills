@@ -32,7 +32,7 @@ disable-model-invocation: true
 | 既存コードの扱い | 参照のみ（スタイル・規約を合わせる） | 必ず確認し、既存実装がある箇所はスキップ |
 | dev/qa implementer モデル | quality: `opus` / cost: `sonnet` | quality: `opus` / cost: `sonnet` |
 
-モデル・レビューの並列化・待ち時間は `state.json.profile`（無ければ `quality`）で決まる。詳細は `~/.claude/skills/dev-flow/reference/profiles.md`。このスキルの `model="…"` の記述は、断りが無ければ cost の値として読む。
+モデル・レビューの並列化・待ち時間は `state.json.profile`（無ければ `quality`）で決まる。詳細は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/profiles.md`。このスキルの `model="…"` の記述は、断りが無ければ cost の値として読む。
 
 ## 事前準備
 
@@ -220,7 +220,7 @@ worktree 作成後、state.json の `implementation_progress.active_worktrees` �
 
 Agent Teams（`TeamCreate` / `team_name`）は使用しません。各 implementer は **名前付きサブエージェント**として起動し、結果は最終回答（JSON）で受け取ります。並列起動するものは `run_in_background=true` で同一ターンに起動し、順次起動するものは `run_in_background=false` で 1 つずつ起動します。
 
-Dev/QA implementer は数十分単位で稼働するため、pane 型サブエージェントが起動後にツールを一切実行しないままハングする既知の問題の影響を受けやすい。STEP C の完了待機中にハングが疑われる場合は `~/.claude/skills/dev-flow/reference/agent-hang-recovery.md` の検知手順・fork フォールバック手順に従う。
+Dev/QA implementer は数十分単位で稼働するため、pane 型サブエージェントが起動後にツールを一切実行しないままハングする既知の問題の影響を受けやすい。STEP C の完了待機中にハングが疑われる場合は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` の検知手順・fork フォールバック手順に従う。
 
 グループのチーム種別に応じて、以下のパターンでエージェントを起動します：
 
@@ -234,10 +234,10 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 | エージェント | プロンプトファイル | 起動条件 |
 |---|---|---|
-| dev-implementer-infra-group-N | `~/.claude/skills/dev-flow-implementation/prompts/dev-infra.md` | Infra / Cross グループ |
-| dev-implementer-app-group-N | `~/.claude/skills/dev-flow-implementation/prompts/dev-app.md` | App / Cross グループ |
-| qa-implementer-infra-group-N | `~/.claude/skills/dev-flow-implementation/prompts/qa-infra.md` | Infra グループ |
-| qa-implementer-app-group-N | `~/.claude/skills/dev-flow-implementation/prompts/qa-app.md` | App / Cross グループ |
+| dev-implementer-infra-group-N | `${CLAUDE_SKILL_DIR}/prompts/dev-infra.md` | Infra / Cross グループ |
+| dev-implementer-app-group-N | `${CLAUDE_SKILL_DIR}/prompts/dev-app.md` | App / Cross グループ |
+| qa-implementer-infra-group-N | `${CLAUDE_SKILL_DIR}/prompts/qa-infra.md` | Infra グループ |
+| qa-implementer-app-group-N | `${CLAUDE_SKILL_DIR}/prompts/qa-app.md` | App / Cross グループ |
 
 プロンプトファイル内のプレースホルダー（`{GROUP_N}`, `{MAIN_DIR}`, `{MODE}` 等）を実際の値に置換してからエージェントに渡すこと。
 
@@ -246,7 +246,17 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 各エージェント起動前に、以下を順にプロンプトへ注入する。詳細は [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md) を参照。
 
 0. **規約のバージョン照合**: `doc/process/conventions_verified.md` が無い、または `verified_for` のバージョンが `tech_stack.language_version` / `framework_version` と違う場合、[reference/conventions/version-check.md](reference/conventions/version-check.md) の手順で `conventions-verifier` エージェント（`model` は quality: `"opus"` / cost: `"sonnet"`、WebFetch 使用）を先に実行して生成する。バージョンが未検出ならマニフェストから検出して `tech_stack` に書き戻す。WebFetch が使えない環境では「未検証」と明記して先へ進む（止めない）
-1. **言語・フレームワーク規約**: [reference/conventions/testing.md](reference/conventions/testing.md) と [reference/conventions/maintainability.md](reference/conventions/maintainability.md)（どちらも常に）と、`state.json.tech_stack` から [reference/conventions/README.md](reference/conventions/README.md) の選択ルールで `conventions/<language>.md` → `conventions/<framework>.md` → `{project}/doc/conventions.md` を Read し（Infra グループで差分に `*.sh` / `*.bats` が出る見込みなら `conventions/shell.md` も）、「書き方」セクションを implementer に、「レビューチェックリスト」を reviewer に、「標準コマンド」を両方に注入する（`{CONVENTIONS}` / `{REVIEW_CHECKLIST}` / `{STANDARD_COMMANDS}` プレースホルダー）。`conventions_verified.md` の「変わった項目」「新しい推奨」は両プレースホルダーの**先頭**に「バージョン照合結果（規約ファイルより優先）」として置く。対応ファイルが無い言語は `_template.md` の観点だけで進め、最終報告で「規約ファイル未整備」と伝える
+1. **言語・フレームワーク規約**: 下の表の順に `reference/conventions/` のファイルを**すべて** Read し、「書き方」セクションを implementer に、「レビューチェックリスト」を reviewer に、「標準コマンド」を両方に注入する（`{CONVENTIONS}` / `{REVIEW_CHECKLIST}` / `{STANDARD_COMMANDS}` プレースホルダー）。後のものが前のものを上書き・補足する
+
+   | 順 | ファイル | 選び方 |
+   |---|---|---|
+   | 0 | `{project}/doc/process/conventions_verified.md` | **最優先**。「変わった項目」「新しい推奨」を両プレースホルダーの**先頭**に「バージョン照合結果（規約ファイルより優先）」として置く（手順 0 で生成済み） |
+   | 1 | `testing.md` / `maintainability.md` | 常に |
+   | 1' | `<language>.md` | `tech_stack.language` から: Go → `go.md`、TypeScript → `typescript.md`、PHP → `php.md`、Python → `python.md`、Shell / Bash → `shell.md`。Infra グループで差分に `*.sh` / `*.bats` が出る見込みなら language に関係なく `shell.md` も |
+   | 2 | `<framework>.md` | `tech_stack.framework` から: Next.js → `nextjs.md`（`react.md` も先に）、Laravel → `laravel.md`、React → `react.md`。無ければ飛ばす |
+   | 3 | `{project}/doc/conventions.md` | あれば。言語・フレームワーク規約と矛盾したらこちらが優先 |
+
+   名前の大文字小文字・`.js` の有無・`Golang` / `Go` の揺れは無視して一致させる。対応ファイルが無い言語は `_template.md` の観点だけで進め、最終報告で「規約ファイル未整備: {language}」と伝える。プロジェクトの `CLAUDE.md` はサブエージェントが自動で読むので注入しない（規約が書かれていればレビュー基準として扱わせる）
 1.5. **実行環境ノート**: `doc/process/environment.md` があれば全文を「実行環境ノート」としてプロンプト冒頭に注入する（node のバージョン切替・PATH・タイムアウト・ポートの後始末など、コマンドを動かすための注意。無ければ省略。詳細は [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md)）。オーケストレーター自身が環境差異に気付いた時点で作成し、以後の全エージェントに配る
 2. **memory フィードバック**: `~/.claude/projects/$(pwd | sed 's|/|-|g')/memory/` 配下の `feedback_review_*.md` / `feedback_test_failures.md` を読み込んでプロンプト冒頭に追記
 3. **ファイルスコープガードレール**: 担当 worktree 配下の作業許可パターンと禁止パターンを明示
@@ -274,7 +284,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 ### STEP C: エージェントの完了待機
 
-グループのチーム種別に応じて、各エージェントの完了通知（最終回答の JSON）を待ちます。`sleep` ポーリングはしません。ただし、タイムアウト目安（cost: STEP 3.5 相当、モデル別に haiku=5分/sonnet=15分/opus=30分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えても完了通知が無い場合は、`~/.claude/skills/dev-flow/reference/agent-hang-recovery.md` の手順でハングかどうかを切り分け、該当すれば同ファイルの fork フォールバックで当該エージェントを再起動する：
+グループのチーム種別に応じて、各エージェントの完了通知（最終回答の JSON）を待ちます。`sleep` ポーリングはしません。ただし、タイムアウト目安（cost: STEP 3.5 相当、モデル別に haiku=5分/sonnet=15分/opus=30分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えても完了通知が無い場合は、`${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` の手順でハングかどうかを切り分け、該当すれば同ファイルの fork フォールバックで当該エージェントを再起動する：
 
 - **Infra**: `dev-implementer-infra-group-N` + `qa-implementer-infra-group-N` の両方
 - **App**: `dev-implementer-app-group-N` + `qa-implementer-app-group-N` の両方
@@ -467,7 +477,7 @@ jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/s
    - Cross: 上記4ブランチすべて
 1.5. **実バージョンの確認（基盤グループのみ）**: 「実バージョンの書き戻し」タスクを含むグループなら、マージ後の `state.json.tech_stack.language_version` / `framework_version` が lock ファイルと一致しているか `jq` で確認する。タスクが書き戻していなければオーケストレーターが lock から読んで `state.json` だけ更新する（要件定義書は人間確認が要るので、compliance の乖離として残す）
 2. **レビュー findings の集約**: このグループの全レビュー（Dev / QA）の `findings` のうち、`rule` が `review/*`（規約ファイルに無かった指摘）で、かつプロジェクト固有でない汎用的なもの（例: `role="button"` の Space キー未対応、`aria-live` の常時マウント、`onClick={async}` の floating promise、`{n && <X />}` の 0 描画）を `doc/process/review-findings-backlog.md` に追記する（`| グループ | rule | severity | 内容 | 該当ファイル | 昇格先候補（react.md / laravel.md / testing.md 等） |` の表。同じ内容が既にあれば行を足さず「回数」列を増やす）。memory 保存の条件（同一 rule 3 回）に届かない minor / major の指摘が次のプロジェクトで消えないようにするため。compliance の完了レポートで「規約ファイルへの昇格候補」として人間に提示する
-3. `~/.claude/skills/dev-flow/hooks/mark-group-done.sh N <PR番号...>` を実行する（1 回の Bash で）。チェックリストのグループ N（全一覧セクションの同一タスクも）を `[x]` にし、`state.json` の `completed_groups` / `active_worktrees` / `pr_numbers` を更新して 1 コミットする。冪等なので再開時に再実行してよい。hook 未導入環境（スクリプトが無い）では同じ内容を手で行う：チェックリストの `[x]` 化 → `implementation_progress` の更新 → 2 ファイルを 1 コミット
+3. `${CLAUDE_SKILL_DIR}/../dev-flow/hooks/mark-group-done.sh N <PR番号...>` を実行する（1 回の Bash で）。チェックリストのグループ N（全一覧セクションの同一タスクも）を `[x]` にし、`state.json` の `completed_groups` / `active_worktrees` / `pr_numbers` を更新して 1 コミットする。冪等なので再開時に再実行してよい。hook 未導入環境（スクリプトが無い）では同じ内容を手で行う：チェックリストの `[x]` 化 → `implementation_progress` の更新 → 2 ファイルを 1 コミット
 
 ---
 
@@ -478,7 +488,7 @@ jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/s
 0. **リモートの実際の状態を確認する**（state.json を更新する前に。hook 導入環境では、これをしないと `state-sync.sh` が test への移行を拒否する）：
    ```bash
    git switch {base_branch} && git pull --ff-only
-   ~/.claude/skills/dev-flow/hooks/verify-remote-state.sh --expect-merged   # PR 番号は state.json の pr_numbers から自動で取る
+   ${CLAUDE_SKILL_DIR}/../dev-flow/hooks/verify-remote-state.sh --expect-merged   # PR 番号は state.json の pr_numbers から自動で取る
    ```
    `summary: NG 0` 以外なら test に進まない。NG の行（未マージ・CI 失敗・CI 未完了・ブランチの遅れ）を解消してからもう一度実行する。人間への完了報告にはこの出力をそのまま貼る
 1. `doc/process/state.json` を更新：
@@ -488,7 +498,7 @@ jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/s
    - **`mode == "incremental"` の場合のみ**：`baseline_commit` を `git rev-parse HEAD`（ベースブランチに全 PR がマージされた後の最新コミット）で上書き。これにより、次回 `incremental` 実行時の差分基点が今回マージ完了時点に進む
 2. 人間に「implementation 完了。次は `/dev-flow` を実行して test（テスト実行）に進んでください」と通知（0 の出力を添える）
 
-`baseline_commit` 更新の責任分担詳細は `~/.claude/skills/dev-flow/reference/state-schema.md` の「baseline_commit のライフサイクル」を参照。
+`baseline_commit` 更新の責任分担詳細は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/state-schema.md` の「baseline_commit のライフサイクル」を参照。
 
 ---
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # dev-flow スキル集のセットアップ
 #   1. ~/.claude/skills/ に各スキルへのシンボリックリンクを作成
+#      ~/.claude/agents/ に cost プロファイル用のステージエージェント定義へのリンクを作成
 #   2. ~/.claude/settings.json に dev-flow の hooks を登録（--no-hooks で省略）
 #
 # 使い方: bash setup.sh [--no-hooks]
@@ -61,7 +62,22 @@ for dir in "$REPO_DIR"/dev-flow*/; do
   fi
 done
 
-chmod +x "$REPO_DIR"/dev-flow/hooks/*.sh
+chmod +x "$REPO_DIR"/dev-flow/hooks/*.sh "$REPO_DIR"/dev-flow-*/scripts/*.sh 2>/dev/null || true
+
+# cost プロファイルのステージエージェント（stage-*-agent）定義。
+# ~/.claude/agents/ を新しく作った場合、起動中の Claude Code には再起動するまで認識されない
+AGENTS_DIR="$HOME/.claude/agents"
+mkdir -p "$AGENTS_DIR"
+for f in "$REPO_DIR"/agents/stage-*-agent.md; do
+  target="$AGENTS_DIR/$(basename "$f")"
+  if [ -e "$target" ] && [ ! -L "$target" ]; then
+    mkdir -p "$BACKUP_DIR"
+    echo "バックアップ: $target -> $BACKUP_DIR/"
+    mv "$target" "$BACKUP_DIR/"
+  fi
+  ln -sfn "$f" "$target"
+  echo "リンク作成: $target -> $f"
+done
 
 # ---------------------------------------------------------------------------
 # 2. hooks の登録

@@ -367,6 +367,7 @@ implementation 中にエージェントが「計画誤り」を検出した場�
 
 ```
 dev-flow-skills/
+├── agents/                         # cost プロファイルのステージエージェント定義（stage-*-agent.md。setup.sh が ~/.claude/agents/ にリンク）
 ├── dev-flow/                       # メインオーケストレーター
 │   ├── SKILL.md                    # 状態管理・ステージ遷移（判断と手順の骨格だけ）
 │   ├── reference/
@@ -474,6 +475,8 @@ dev-flow-skills/
 ## Hook 連携
 
 オーケストレーターがプロンプトの指示（LLM の判断）で行っていた検証・記録・同期のうち、機械的に判定できるものを Claude Code の hooks に移しています。スクリプトは `dev-flow/hooks/` にあり、`setup.sh` が `~/.claude/settings.json` に登録します。
+
+**なぜ hook をスキルの frontmatter（`hooks:`）に移さないか:** スキルの frontmatter に書いた hook は、そのスキルを実行しているメインの会話のツール呼び出しでしか動かず、スキルから起動したサブエージェントのツール呼び出しでは動かない（2026-10-08 に実測。サブエージェントの Bash は実行されたが hook は発火しなかった）。dev-flow の検査（writer に対する `doc-validate`、implementer に対する `test-lint`、test runner に対する `test-stage-guard`、cost の `stage-implementation-agent` に対する `pr-merge-guard`）はサブエージェントの中で効かないと意味がないので、`settings.json` に登録したままにしている。`settings.json` の hook はサブエージェント内でも動く。
 
 | タイミング | 自動で行うこと |
 |---|---|

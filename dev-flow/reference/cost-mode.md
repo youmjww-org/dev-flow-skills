@@ -28,37 +28,27 @@
 
 ## サブエージェントの起動
 
-スキルファイルを Read し、ステージに必要なセクションだけを抜き出してプロンプトに埋め込む（2000 トークン以下なら全文でよい）。本文中の `CLAUDE_SKILL_DIR` 変数（ドル記号と波括弧付き）は、埋め込む前にそのスキルの実際のディレクトリに置き換える。
-
-| stage | 渡すセクション | 省略するセクション |
-|---|---|---|
-| requirements | 要件定義手順・出力フォーマット・AskUserQuestion 指示 | フロー全体像・他ステージ手順 |
-| spec | ドキュメント生成手順・各仕様書フォーマット | フロー全体像・実装手順 |
-| consistency / plan_repair | 整合性チェック手順・差分検出方法・修正指示 | フロー全体像・実装手順 |
-| implementation | 実装手順・worktree 管理・PR 作成方法 | フロー全体像・ドキュメント生成手順 |
-| test | テスト実行手順・失敗時エスカレーション | フロー全体像・実装手順 |
-| compliance | 準拠チェック手順・完了条件・最終コミット指示 | フロー全体像・実装手順 |
+ステージエージェントは `~/.claude/agents/stage-*-agent.md` に定義してある（リポジトリの `agents/`。`setup.sh` がリンクする）。定義にモデルと「下流スキルの SKILL.md を全文 Read して STEP 0 から実行する」指示が入っているので、オーケストレーターはスキルを読んだり抜き出したりせず、run の情報だけを渡す。
 
 ```
 Agent(
+  subagent_type: "{エージェント name}",
   name: "{エージェント name}",
-  model: "{モデル}",
   run_in_background: false,
   prompt: """
-あなたは dev-flow の {stage} ステージ（{タスク名}）を担当するエージェントです。
-
 作業ディレクトリ: {pwd の結果}
 状態ファイル: doc/process/state.json
 引数: {/dev-flow の引数}
 変更種別: {kind} / タスク: {task} / profile: cost
 開発モード: {mode} / baseline_commit: {baseline_commit}
-hooks: {enabled / disabled}（disabled なら gh pr merge を発行しない）
-
-## 実行する手順
-{スキル内容の該当ステージ手順}
+hooks: {enabled / disabled}
 """
 )
 ```
+
+- `name` は hook（`pre-agent-check.sh` / `agent-complete.sh`）がエージェントを見分けるのに使うので、`subagent_type` と同じ値を必ず渡す
+- `model` は渡さない（定義の `model` を使う。Agent ツールの `model` を渡すと定義より優先される）
+- 定義が見つからない（`subagent_type` が使えない）ときは、`setup.sh` の再実行と Claude Code の再起動を案内する。それまでの間は `subagent_type: "general-purpose"`・`model` に対応表のモデルを指定し、`agents/stage-*-agent.md` の本文をそのままプロンプトの先頭に付けて起動する
 
 hook の `pre-agent-check.sh` が起動前に、プランモード・下流スキルの欠損・state.json 不正・階層深さ（`agent_hierarchy.current_depth >= 4`）・ステージとエージェントの不一致・同じステージ 5 回以上を検証する。`deny` / `ask` されたら理由を人間に伝え、回避策を取らない。hook 未導入環境では同じ確認を自分で行う（階層深さは起動時に `+1`、完了時に `-1`）。
 

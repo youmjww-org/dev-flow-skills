@@ -1,13 +1,13 @@
 ---
 name: dev-flow-test
-description: AI駆動開発フローの test ステージ（5/6: テスト実行）。Haiku で最大 2 回試行し、失敗時は自動的に Sonnet（最大 3 回）に昇格してテストを全通過させます。テストコードは修正せず、プロダクションコードのみを修正する DocDD ルールを適用し、E2E テストにも対応します。implementation 完了後、または `--from=test` 起動時に使用します。
+description: AI駆動開発フローの test ステージ（5/6: テスト実行）。quality プロファイル（既定）は Opus で最大 5 回、cost プロファイルは Haiku で最大 2 回試行し失敗時に Sonnet（最大 3 回）へ昇格してテストを全通過させます。テストコードは修正せず、プロダクションコードのみを修正する DocDD ルールを適用し、E2E テストにも対応します。implementation 完了後、または `--from=test` 起動時に使用します。
 model: haiku
 allowed-tools: Read Write Edit Bash Agent SendMessage TaskStop AskUserQuestion
 disable-model-invocation: true
 ---
 
 
-# Stage 5/6 test: テスト実行（ハイブリッドモデル）
+# Stage 5/6 test: テスト実行
 
 ## 入力
 
@@ -36,7 +36,16 @@ git pull --ff-only
 - `summary: NG 0` でなければテストを始めない。`git pull --ff-only` が失敗する（ローカルに未 push のコミットがある等）なら人間に報告して止める
 - テストランナーには、この出力と `git rev-parse --short HEAD` を渡す。最終報告の先頭に「テスト対象: {branch}@{短いハッシュ}（origin と同期済み）」と書く
 
-## STEP 1: test-runner-haiku を同期起動
+## STEP 0.7: プロファイルによる分岐
+
+`state.json.profile`（無ければ `quality`）で起動するランナーが変わる（`~/.claude/skills/dev-flow/reference/profiles.md`）。
+
+| profile | 起動するランナー | 続き |
+|---|---|---|
+| `quality` | `test-runner-opus`（`name="test-runner-opus"`, `run_in_background=false`, `model="opus"`）。プロンプトは下の STEP 3 の test-runner-sonnet プロンプトから「【モデル昇格通知】」と「Haiku 試行履歴」を除き、**試行上限を 5 回**（連続無進捗の上限 2 回はそのまま）、「全テスト通過（Sonnet）」を「全テスト通過（Opus）」に読み替えたもの | 最終回答が「全テスト通過（Opus）」なら STEP 4、エスカレーション報告なら STEP 3 末尾のエスカレーション処理（報告フォーマットの「Haiku 試行履歴」「Sonnet 試行履歴」は「Opus 試行履歴（1〜5回目）」1 つにまとめる）。途中終了・エラーならテストを一度 Bash で実行して現状を確認し、通過していれば STEP 4、失敗が残っていれば同じランナーを 1 回だけ起動し直す |
+| `cost` | 下の STEP 1 から（Haiku → Sonnet） | STEP 2・3 のとおり |
+
+## STEP 1: test-runner-haiku を同期起動（cost のみ）
 
 以下の設定で `test-runner-haiku` を起動します（`name="test-runner-haiku"`, `run_in_background=false`, `model="haiku"`）：
 
@@ -78,7 +87,7 @@ E2E テストあり: `{IS_E2E}`（true の場合は E2E テストも対象に含
 
 ---
 
-## STEP 2: test-runner-haiku の結果判定
+## STEP 2: test-runner-haiku の結果判定（cost のみ）
 
 Agent 呼び出しが返ったら最終回答を読み取ります：
 
@@ -86,7 +95,7 @@ Agent 呼び出しが返ったら最終回答を読み取ります：
 - **「Haiku 試行上限到達」** → STEP 3（Sonnet 昇格）へ進む
 - どちらでもない（途中終了・エラー）→ テストを一度 Bash で実行して現状を確認し、失敗が残っていれば STEP 3 へ、通過していれば STEP 4 へ
 
-## STEP 3: Sonnet へ昇格（Haiku が2回失敗した場合のみ実行）
+## STEP 3: Sonnet へ昇格（cost で Haiku が2回失敗した場合のみ実行）
 
 以下の設定で `test-runner-sonnet` を起動します（`name="test-runner-sonnet"`, `run_in_background=false`, `model="sonnet"`）：
 
@@ -152,7 +161,7 @@ E2E テストあり: `{IS_E2E}`（true の場合は E2E テストも対象に含
 
 ---
 
-`test-runner-sonnet` の最終回答がエスカレーション報告だった場合は、`doc/process/escalation_test_{timestamp}.md` に保存したうえで AskUserQuestion で人間に状況を報告して指示を仰ぐ（`~/.claude/skills/dev-flow/reference/escalation-format.md` 参照）。state.json は更新しない。
+`test-runner-sonnet`（quality では `test-runner-opus`）の最終回答がエスカレーション報告だった場合は、`doc/process/escalation_test_{timestamp}.md` に保存したうえで AskUserQuestion で人間に状況を報告して指示を仰ぐ（`~/.claude/skills/dev-flow/reference/escalation-format.md` 参照）。state.json は更新しない。
 
 ## STEP 4: 出力
 

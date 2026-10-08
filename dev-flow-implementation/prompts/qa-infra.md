@@ -1,6 +1,6 @@
 # QA (Infra) Implementer プロンプト
 
-モデル: `sonnet`
+モデル: quality は `opus`（昇格ラダー無し）/ cost は `sonnet`（昇格ラダーあり）。`dev-flow/reference/profiles.md`
 
 あなたは **Infra QA チーム**の実装担当です。**グループ {GROUP_N}** のインフラ QA タスクを完成させてください。
 

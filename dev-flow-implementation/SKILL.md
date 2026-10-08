@@ -30,7 +30,9 @@ disable-model-invocation: true
 |---|---|---|
 | 実装範囲 | チェックリストの全タスク | チェックリストのタスク（差分のみ・既に consistency で絞り込み済み） |
 | 既存コードの扱い | 参照のみ（スタイル・規約を合わせる） | 必ず確認し、既存実装がある箇所はスキップ |
-| dev/qa implementer モデル | `sonnet` | `sonnet` |
+| dev/qa implementer モデル | quality: `opus` / cost: `sonnet` | quality: `opus` / cost: `sonnet` |
+
+モデル・レビューの並列化・待ち時間は `state.json.profile`（無ければ `quality`）で決まる。詳細は `~/.claude/skills/dev-flow/reference/profiles.md`。このスキルの `model="…"` の記述は、断りが無ければ cost の値として読む。
 
 ## 事前準備
 
@@ -243,14 +245,16 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 各エージェント起動前に、以下を順にプロンプトへ注入する。詳細は [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md) を参照。
 
-0. **規約のバージョン照合**: `doc/process/conventions_verified.md` が無い、または `verified_for` のバージョンが `tech_stack.language_version` / `framework_version` と違う場合、[reference/conventions/version-check.md](reference/conventions/version-check.md) の手順で `conventions-verifier` エージェント（`model="sonnet"`、WebFetch 使用）を先に実行して生成する。バージョンが未検出ならマニフェストから検出して `tech_stack` に書き戻す。WebFetch が使えない環境では「未検証」と明記して先へ進む（止めない）
+0. **規約のバージョン照合**: `doc/process/conventions_verified.md` が無い、または `verified_for` のバージョンが `tech_stack.language_version` / `framework_version` と違う場合、[reference/conventions/version-check.md](reference/conventions/version-check.md) の手順で `conventions-verifier` エージェント（`model` は quality: `"opus"` / cost: `"sonnet"`、WebFetch 使用）を先に実行して生成する。バージョンが未検出ならマニフェストから検出して `tech_stack` に書き戻す。WebFetch が使えない環境では「未検証」と明記して先へ進む（止めない）
 1. **言語・フレームワーク規約**: [reference/conventions/testing.md](reference/conventions/testing.md) と [reference/conventions/maintainability.md](reference/conventions/maintainability.md)（どちらも常に）と、`state.json.tech_stack` から [reference/conventions/README.md](reference/conventions/README.md) の選択ルールで `conventions/<language>.md` → `conventions/<framework>.md` → `{project}/doc/conventions.md` を Read し（Infra グループで差分に `*.sh` / `*.bats` が出る見込みなら `conventions/shell.md` も）、「書き方」セクションを implementer に、「レビューチェックリスト」を reviewer に、「標準コマンド」を両方に注入する（`{CONVENTIONS}` / `{REVIEW_CHECKLIST}` / `{STANDARD_COMMANDS}` プレースホルダー）。`conventions_verified.md` の「変わった項目」「新しい推奨」は両プレースホルダーの**先頭**に「バージョン照合結果（規約ファイルより優先）」として置く。対応ファイルが無い言語は `_template.md` の観点だけで進め、最終報告で「規約ファイル未整備」と伝える
 1.5. **実行環境ノート**: `doc/process/environment.md` があれば全文を「実行環境ノート」としてプロンプト冒頭に注入する（node のバージョン切替・PATH・タイムアウト・ポートの後始末など、コマンドを動かすための注意。無ければ省略。詳細は [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md)）。オーケストレーター自身が環境差異に気付いた時点で作成し、以後の全エージェントに配る
 2. **memory フィードバック**: `~/.claude/projects/$(pwd | sed 's|/|-|g')/memory/` 配下の `feedback_review_*.md` / `feedback_test_failures.md` を読み込んでプロンプト冒頭に追記
 3. **ファイルスコープガードレール**: 担当 worktree 配下の作業許可パターンと禁止パターンを明示
-4. **Opus 昇格時**: Sonnet 試行履歴と未解決指摘を冒頭に追記
+4. **Opus 昇格時（cost のみ）**: Sonnet 試行履歴と未解決指摘を冒頭に追記
 
-**昇格ラダー（Dev/QA implementer）:**
+**implementer のモデル（quality）:** 初回から `opus` で起動し、昇格ラダーは使わない。レビュー指摘の修正は同じ implementer に `SendMessage` で渡して直させる（STEP D の最大 5 回がそのまま上限）。`task_complexity` は見ない。
+
+**昇格ラダー（Dev/QA implementer、cost のみ）:**
 
 | 段階 | モデル | 試行 | 昇格条件 |
 |---|---|---|---|
@@ -270,7 +274,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 ### STEP C: エージェントの完了待機
 
-グループのチーム種別に応じて、各エージェントの完了通知（最終回答の JSON）を待ちます。`sleep` ポーリングはしません。ただし、タイムアウト目安（STEP 3.5 相当、モデル別に haiku=5分/sonnet=15分/opus=30分）を超えても完了通知が無い場合は、`~/.claude/skills/dev-flow/reference/agent-hang-recovery.md` の手順でハングかどうかを切り分け、該当すれば同ファイルの fork フォールバックで当該エージェントを再起動する：
+グループのチーム種別に応じて、各エージェントの完了通知（最終回答の JSON）を待ちます。`sleep` ポーリングはしません。ただし、タイムアウト目安（cost: STEP 3.5 相当、モデル別に haiku=5分/sonnet=15分/opus=30分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えても完了通知が無い場合は、`~/.claude/skills/dev-flow/reference/agent-hang-recovery.md` の手順でハングかどうかを切り分け、該当すれば同ファイルの fork フォールバックで当該エージェントを再起動する：
 
 - **Infra**: `dev-implementer-infra-group-N` + `qa-implementer-infra-group-N` の両方
 - **App**: `dev-implementer-app-group-N` + `qa-implementer-app-group-N` の両方
@@ -312,10 +316,18 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 全エージェント完了後、チーム種別に応じてレビューを実行。各レビューは独立したエージェント（`model=opus`）で実行します。レビュアーは設計判断・セキュリティ判断の質を最重要視するため、昇格ラダーを設けず最初から Opus を使用します。
 
-**実行順序：**
+**実行順序（cost）：**
 - **Infra**: Dev (Infra) レビュー → QA (Infra) レビュー
 - **App**: Dev (App) レビュー → QA (App) レビュー
 - **Cross**: Dev (Infra) レビュー → QA (Infra) レビュー → Dev (App) レビュー → QA (App) レビュー
+
+**実行順序（quality）：** Dev レビューと QA レビューは見る worktree も観点も別なので、**同じ層の 2 本を同一ターンで同時に起動する**（どちらも `run_in_background=true`、両方の完了通知を待ってから次へ）。
+- **Infra**: Dev (Infra) レビュー ∥ QA (Infra) レビュー
+- **App**: Dev (App) レビュー ∥ QA (App) レビュー
+- **Cross**: [Dev (Infra) ∥ QA (Infra)] → [Dev (App) ∥ QA (App)]。Infra の修正が App に響くことがあるので、層の順番は保つ
+- 修正ループも並行してよい（Dev implementer と QA implementer は別 worktree）。どちらかの修正で Dev と QA の食い違いが出うる場合（インターフェース・エラーメッセージ・ID の変更）は、両方の承認が出た後に STEP C.5 の統合検証をもう一度回してから STEP E に進む
+
+下の各レビューの「同期実行、`run_in_background=false`」は cost の指定。quality では上のとおりバックグラウンドで並べる。
 
 **レビュー指摘の渡し方（全レビュー共通）:**
 

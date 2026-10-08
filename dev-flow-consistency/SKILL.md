@@ -56,7 +56,7 @@ disable-model-invocation: true
 
 `mode = "incremental"` の場合のみ、STEP 1 の前に Impact Analysis を実行します。
 
-以下のエージェントを起動（同期実行、`run_in_background=false`, `model="sonnet"`）：
+以下のエージェントを起動（同期実行、`run_in_background=false`, `model` は quality: `"opus"` / cost: `"sonnet"`。`dev-flow/reference/profiles.md`）：
 
 ```
 あなたは Impact Analysis エージェントです。baseline_commit 以降のドキュメント変更を分析し、
@@ -175,11 +175,11 @@ STEP 2（整合性チェック）完了後、以下の手順で `doc/process/cov
 
 Agent Teams（`TeamCreate` / `team_name`）は使用しません。以下の 2 エージェントを **同一ターンで同時に** 名前付きバックグラウンドサブエージェントとして起動し、それぞれの完了通知（最終回答）を本エージェントが受け取ります。中間オーケストレーター（旧 `consistency-orchestrator`）は置きません。
 
-### タスクチェックリスト生成（`run_in_background=true`, `model="sonnet"`, `name="checklist-writer"`）
+### タスクチェックリスト生成（`run_in_background=true`, `model` は quality: `"opus"` / cost: `"sonnet"`, `name="checklist-writer"`）
 
 プロンプトは `prompts/checklist-writer.md` を Read ツールで読み込み、プレースホルダー（`{MODE}`, `{BASELINE_COMMIT}`, `{REQUIREMENTS_PATHS}` 等）を実際の値に置換してから Agent に渡してください。
 
-### スペックキャッシュ生成（`run_in_background=true`, `model="sonnet"`, `name="spec-cache-writer"`）
+### スペックキャッシュ生成（`run_in_background=true`, `model` は quality: `"opus"` / cost: `"sonnet"`, `name="spec-cache-writer"`）
 
 プロンプトは `prompts/spec-cache-writer.md` を Read ツールで読み込み、プレースホルダー（`{MODE}`, `{BASELINE_COMMIT}`, `{REQUIREMENTS_PATHS}` 等）を実際の値に置換してから Agent に渡してください。
 

@@ -17,6 +17,12 @@ bash ~/dev-flow-skills/setup.sh
 /dev-flow 新機能を実装したい
 ```
 
+既定は **quality プロファイル**（速さと正確さ優先。オーケストレーターが各ステージを直接実行し、末端の実行者も原則 Opus）です。コストを抑えたいときは `--profile=cost` を付けると、従来の流れ（ステージごとに Haiku の管理エージェントを立て、Sonnet から始めて失敗時に昇格）で動きます。
+
+```
+/dev-flow --profile=cost 小さな修正をしたい
+```
+
 各ステージが完了したら `/dev-flow` を再実行するだけで次ステージへ進みます。状態は `doc/process/state.json` に保存されるため、セッションをまたいでも継続できます。
 
 ---
@@ -46,7 +52,7 @@ flowchart TD
 
 ステージ名は `--from=` の値・`state.json.next_stage`・エージェント名（`stage-<stage>-agent`）・`task_checklist.md` の進捗行で共通です。
 
-| Stage | スキル | 役割 | モデル |
+| Stage | スキル | 役割 | モデル（cost。quality は下の「モデル構成」） |
 |---|---|---|---|
 | 1. requirements | `/dev-flow-requirements` | 対話で要件深掘り・曖昧表現リント・用語集整備・REQ-NNN 付与 | Opus 4.7 |
 | 2. spec | `/dev-flow-spec` | テスト/API/インフラ/モックを並列生成（OpenAPI 3.1.0 / Gherkin） | Haiku（子: Sonnet） |
@@ -67,6 +73,16 @@ flowchart TD
 /dev-flow --kind=fix "退会後もログインできてしまう"      # 不具合修正（要件は変えない）
 /dev-flow --kind=refactor "認証ミドルウェアを分割"       # 挙動を変えない内部改善
 ```
+
+### ヘルプ
+
+```
+/dev-flow --help              # 短い使い方（オプション一覧と例）
+/dev-flow --man               # 詳しいマニュアル全体
+/dev-flow --man profiles      # マニュアルの 1 節だけ（options kinds profiles stages state hooks merge outputs troubleshooting）
+```
+
+ヘルプ系のオプションを付けたときはフローを実行せず、state.json も書き換えません。中身は `dev-flow/reference/help.md` と `dev-flow/reference/manual.md` にあります。
 
 ### 変更種別（kind）と通るステージ
 
@@ -177,9 +193,9 @@ flowchart LR
     TSR -. changes_requested → SendMessage で再開 .-> TSW
 ```
 
-#### 自動モデル昇格（実装・レビュー）
+#### 自動モデル昇格（実装・レビュー、cost プロファイル）
 
-初回は Sonnet で実装し、設計レベルの指摘が出たら Opus に昇格、それでも解決不能なら人間にエスカレーションします。
+quality では最初から Opus で実装するので昇格はありません。cost では初回は Sonnet で実装し、設計レベルの指摘が出たら Opus に昇格、それでも解決不能なら人間にエスカレーションします。
 
 ```mermaid
 flowchart TD
@@ -403,18 +419,21 @@ dev-flow-skills/
 
 ### モデル構成
 
-| ステージ | スキル | モデル |
-|---|---|---|
-| オーケストレーター | dev-flow | Haiku 4.5 |
-| bootstrap | dev-flow-bootstrap | Opus 4.7（棚卸し・仕様書逆生成の子: Sonnet） |
-| requirements | dev-flow-requirements | Opus 4.7 |
-| spec | dev-flow-spec | Haiku 4.5（子: Sonnet） |
-| consistency STEP 0 Impact Analysis | dev-flow-consistency | Sonnet |
-| consistency | dev-flow-consistency | Haiku 4.5（整合性チェック子: Opus） |
-| implementation 実装 | dev-flow-implementation | Sonnet → Opus（自動昇格） |
-| implementation レビュー | dev-flow-implementation | Opus（昇格ラダーなし・初回から最高品質） |
-| test | dev-flow-test | Haiku → Sonnet（自動昇格） |
-| compliance | dev-flow-compliance | Opus 4.7 |
+役割ごとの正本は `dev-flow/reference/profiles.md`。
+
+| ステージ | スキル | quality（既定） | cost（`--profile=cost`） |
+|---|---|---|---|
+| オーケストレーター | dev-flow | Opus | Opus（起動と受け渡しだけ） |
+| ステージの実行者 | 全ステージ | オーケストレーターが直接実行 | `stage-*-agent`（requirements / compliance / bootstrap は Opus、他は Haiku） |
+| bootstrap | dev-flow-bootstrap | 子も Opus | 棚卸し・仕様書逆生成の子: Sonnet |
+| requirements | dev-flow-requirements | Opus | Opus |
+| spec | dev-flow-spec | 子（writer / reviewer）: Opus | 子: Sonnet |
+| consistency STEP 0 Impact Analysis | dev-flow-consistency | Opus | Sonnet |
+| consistency | dev-flow-consistency | 子: Opus | 整合性チェック子: Opus / writer 子: Sonnet |
+| implementation 実装 | dev-flow-implementation | Opus（昇格なし） | Sonnet → Opus（自動昇格） |
+| implementation レビュー | dev-flow-implementation | Opus。Dev と QA を同時に | Opus。Dev → QA の直列 |
+| test | dev-flow-test | Opus（最大 5 回） | Haiku → Sonnet（自動昇格） |
+| compliance | dev-flow-compliance | Opus | Opus |
 
 ### 生成物一覧
 

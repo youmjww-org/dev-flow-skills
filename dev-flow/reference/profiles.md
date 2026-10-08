@@ -43,6 +43,8 @@ quality でも末端の実行者を最初から fork にはしない。fork は�
 
 ## quality でオーケストレーターが直接実行するときの注意
 
+- オーケストレーター自身が Opus であることが前提。`dev-flow/SKILL.md` の frontmatter（`model: opus` / `effort: high`）は起動したターンにしか効かないので、ステージを始める前に自分のモデルを確かめ、Opus でなければ `/dev-flow` の打ち直しか `/model opus` を案内して止まる。人間への質問は AskUserQuestion で行い、同じターンの中で続ける
+- Read で読んだ下流の SKILL.md では `${CLAUDE_SKILL_DIR}` が展開されない。そのスキルのディレクトリ（dev-flow と同じ階層の `dev-flow-<stage>/`）と読み替える
 - `stage-*-agent` を起動しないので、hook の `pre-agent-check.sh`（プランモード検出・階層深さ・ループ検出）と `agent-complete.sh`（所要時間の記録）は動かない。代わりに：
   - プランモードなら開始前に「プランモードを抜けて（Shift+Tab）から再実行してください」と伝えて終了する
   - 同じステージを 5 回以上やり直していないかを `harness.stage_history` で自分で確認する

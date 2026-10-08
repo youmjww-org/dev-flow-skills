@@ -30,7 +30,7 @@ E2E テストあり: `{IS_E2E}`
 BASE="$(jq -r '.base_branch // empty' doc/process/state.json)"   # 無ければ現在のブランチ
 [ -n "$BASE" ] && git switch "$BASE"
 git pull --ff-only
-~/.claude/skills/dev-flow/hooks/verify-remote-state.sh
+${CLAUDE_SKILL_DIR}/../dev-flow/hooks/verify-remote-state.sh
 ```
 
 - `summary: NG 0` でなければテストを始めない。`git pull --ff-only` が失敗する（ローカルに未 push のコミットがある等）なら人間に報告して止める
@@ -38,7 +38,7 @@ git pull --ff-only
 
 ## STEP 0.7: プロファイルによる分岐
 
-`state.json.profile`（無ければ `quality`）で起動するランナーが変わる（`~/.claude/skills/dev-flow/reference/profiles.md`）。
+`state.json.profile`（無ければ `quality`）で起動するランナーが変わる（`${CLAUDE_SKILL_DIR}/../dev-flow/reference/profiles.md`）。
 
 | profile | 起動するランナー | 続き |
 |---|---|---|
@@ -161,7 +161,7 @@ E2E テストあり: `{IS_E2E}`（true の場合は E2E テストも対象に含
 
 ---
 
-`test-runner-sonnet`（quality では `test-runner-opus`）の最終回答がエスカレーション報告だった場合は、`doc/process/escalation_test_{timestamp}.md` に保存したうえで AskUserQuestion で人間に状況を報告して指示を仰ぐ（`~/.claude/skills/dev-flow/reference/escalation-format.md` 参照）。state.json は更新しない。
+`test-runner-sonnet`（quality では `test-runner-opus`）の最終回答がエスカレーション報告だった場合は、`doc/process/escalation_test_{timestamp}.md` に保存したうえで AskUserQuestion で人間に状況を報告して指示を仰ぐ（`${CLAUDE_SKILL_DIR}/../dev-flow/reference/escalation-format.md` 参照）。state.json は更新しない。
 
 ## STEP 4: 出力
 

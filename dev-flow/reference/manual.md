@@ -2,6 +2,18 @@
 
 `/dev-flow --man` で全体、`/dev-flow --man <topic>` で 1 節だけ表示する。各節の見出し末尾の英字（例: `profiles`）がトピック名。設計の背景は dev-flow-skills の README.md、各ステージの手順は `~/.claude/skills/dev-flow-<stage>/SKILL.md` にある。
 
+## 目次
+
+- オプション（`--man options`）
+- 変更種別（`--man kinds`）
+- 実行プロファイル（`--man profiles`）
+- ステージ（`--man stages`）
+- 状態ファイル（`--man state`）
+- hook（`--man hooks`）
+- PR とマージ（`--man merge`）
+- 生成物（`--man outputs`）
+- トラブルシューティング（`--man troubleshooting`）
+
 ## オプション {#options}
 
 | オプション | 値 | 説明 |

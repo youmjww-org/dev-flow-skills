@@ -2,6 +2,13 @@
 
 言語に関係なく**常に**注入する（`testing.md` と同じ扱い）。Dev implementer と Dev reviewer に渡す。閾値（複雑度・行数・ネスト）は `coverage_threshold` と同じく `doc/conventions.md` で変更できる。言語別ファイルの規約と矛盾する場合は言語別ファイルを優先する。
 
+## 目次
+
+- 書き方（implementer 向け）
+- レビューチェックリスト（reviewer 向け）
+- 標準コマンド（tech_stack が空のときのフォールバック）
+- 出典と対象バージョン
+
 ## 書き方（implementer 向け）
 
 ### 書く前に探す（車輪の再発明をしない）

@@ -96,7 +96,7 @@ git ls-files | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -20
 
 **5a. カバレッジ行列**
 
-`~/.claude/skills/dev-flow-consistency/SKILL.md` の STEP 3 と同じ形式で `doc/process/coverage_matrix.md` を生成する。bootstrap では **未カバー REQ（テストが無い振る舞い）が主役**なので、行列の先頭に「未カバー REQ 一覧」を置く。
+`${CLAUDE_SKILL_DIR}/../dev-flow-consistency/SKILL.md` の STEP 3 と同じ形式で `doc/process/coverage_matrix.md` を生成する。bootstrap では **未カバー REQ（テストが無い振る舞い）が主役**なので、行列の先頭に「未カバー REQ 一覧」を置く。
 
 **5b. 人間レビュー**
 
@@ -129,7 +129,7 @@ AskUserQuestion で以下をまとめて提示する：
   "tech_stack": { "...": "STEP 1 で確定した値" },
   "is_gui": false, "is_api": true, "is_infra": false, "is_e2e": false,
   "agent_hierarchy": { "max_depth": 4, "current_depth": 1, "stack": ["dev-flow"] },
-  "harness": { "skill_versions": { "dev-flow": "{git -C ~/.claude/skills/dev-flow rev-parse --short HEAD}" }, "started_at": "{ISO8601}", "stage_history": [] }
+  "harness": { "skill_versions": { "dev-flow": "{git -C ${CLAUDE_SKILL_DIR}/../dev-flow rev-parse --short HEAD}" }, "started_at": "{ISO8601}", "stage_history": [] }
 }
 ```
 

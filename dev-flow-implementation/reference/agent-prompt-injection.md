@@ -12,7 +12,7 @@
 
 ## 言語・フレームワーク規約の注入
 
-`state.json.tech_stack.language` / `.framework` から [conventions/README.md](conventions/README.md) の選択ルールでファイルを決め、Read して各プレースホルダーに入れる：
+`state.json.tech_stack.language` / `.framework` から `dev-flow-implementation/SKILL.md` STEP B「言語・フレームワーク規約」の表でファイルを決め、Read して各プレースホルダーに入れる：
 
 | プレースホルダー | 入れるもの | 渡す相手 |
 |---|---|---|

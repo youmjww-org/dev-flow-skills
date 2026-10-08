@@ -74,6 +74,16 @@ flowchart TD
 /dev-flow --kind=refactor "認証ミドルウェアを分割"       # 挙動を変えない内部改善
 ```
 
+### ヘルプ
+
+```
+/dev-flow --help              # 短い使い方（オプション一覧と例）
+/dev-flow --man               # 詳しいマニュアル全体
+/dev-flow --man profiles      # マニュアルの 1 節だけ（options kinds profiles stages state hooks merge outputs troubleshooting）
+```
+
+ヘルプ系のオプションを付けたときはフローを実行せず、state.json も書き換えません。中身は `dev-flow/reference/help.md` と `dev-flow/reference/manual.md` にあります。
+
 ### 変更種別（kind）と通るステージ
 
 | kind | requirements | spec | consistency | implementation | test | compliance |

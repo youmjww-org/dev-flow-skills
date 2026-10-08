@@ -2,7 +2,7 @@
 name: dev-flow
 description: AI駆動開発フローのメインオーケストレーター。requirements → spec → consistency → implementation → test → compliance の 6 ステージを順次実行します。既定（quality プロファイル）は速さと正確さを優先し、`--profile=cost` でコスト重視の流れに切り替えます。新機能を要件定義から実装まで一気通貫で自動化したい時、または `doc/process/state.json` から既存フローを継続したい時に使用します。
 model: opus
-argument-hint: "[--kind=feature|change|fix|refactor] [--profile=quality|cost] [--from=stage] [--bootstrap] [--dry-run] タスク説明"
+argument-hint: "[--kind=feature|change|fix|refactor] [--profile=quality|cost] [--from=stage] [--bootstrap] [--dry-run] [--help] [--man [topic]] タスク説明"
 # allowed-tools はこのスキルを呼び出したターンの親セッションにだけ効く（サブエージェントは親のパーミッションモードを継承する）
 allowed-tools: Read Write Edit Bash Agent SendMessage TaskStop AskUserQuestion
 # コミット・worktree・PR 作成・自動マージまで行う副作用の大きいワークフローなので、起動は人間の /dev-flow に限定する
@@ -12,6 +12,18 @@ disable-model-invocation: true
 # 開発フローオーケストレーター
 
 あなたは開発フローの**メインオーケストレーター**です。状態ファイルを管理し、各ステージのスキルを順次実行してフローを進めます。
+
+## ヘルプ（最初に判定する）
+
+下の「起動時コンテキスト › 引数」に `--help` / `-h` / `--man` が含まれていたら、**フローは実行しない**。他のオプションやタスク説明が一緒に書かれていても無視する。state.json・ファイルの書き換え、サブエージェントの起動、`profiles.md` の Read はしない。
+
+| 引数 | 表示するもの |
+|---|---|
+| `--help` / `-h` | `~/.claude/skills/dev-flow/reference/help.md` を Read し、中身をそのままコードブロックで出す |
+| `--man`（トピックなし） | `~/.claude/skills/dev-flow/reference/manual.md` を Read し、全文をそのまま出す |
+| `--man <topic>` / `--man=<topic>` | `manual.md` の見出しに `{#<topic>}` が付いた節だけを出す（見出しの `{#…}` は表示から外す）。該当が無ければ「トピックが見つかりません」と有効なトピック（`options` `kinds` `profiles` `stages` `state` `hooks` `merge` `outputs` `troubleshooting`）を出す |
+
+`--help` と `--man` の両方があれば `--man` を優先する。表示の最後に、「起動時コンテキスト › 現在の state.json」から現在の状態を 1 行添える（例:「現在: next_stage=implementation / kind=feature / profile=quality」、state.json が無ければ「現在: 進行中の run なし」）。要約や言い換えはしない。
 
 ## 実行プロファイル
 
@@ -179,6 +191,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 - **BOOTSTRAP**: 引数に `"--bootstrap"` が含まれる場合は `true`。STEP 1.5 の判定を飛ばして `bootstrap` ステージを起動する
 - **FROM**: `--from=` の値（指定時は state.json の `next_stage` にその値を書いてから開始する）
 - **DRY_RUN**: 引数に `"--dry-run"` が含まれる場合は `true`。サブエージェントを起動せずフロー構成を検証して終了する
+- `--help` / `-h` / `--man` はここに来る前に「ヘルプ」で処理済み（フローは実行しない）
 
 `--from` の有効値はステージ名そのもの（`requirements` / `spec` / `consistency` / `implementation` / `test` / `compliance`）。`requirements` は state.json 不要（requirements ステージが生成する）、それ以外は必要。`plan_repair` は `--from` では指定できない（implementation 内部からのみ遷移）。
 

@@ -62,7 +62,9 @@ disable-model-invocation: true
 | `fix` | 不具合修正（要件は変えない） | — | ● 再現 TC 追加のみ | ● lite（1 グループ） | ● 1 グループ | ● | ● 追加 TC のみ |
 | `refactor` | 挙動を変えない内部改善 | — | — | ● lite（1 グループ） | ● 1 グループ | ● | ● 全 ID（挙動不変） |
 
-最初のステージは `feature` / `change` → `requirements`、`fix` → `spec`、`refactor` → `consistency`。人間確認ゲートは requirements の後だけ。`fix` / `refactor` は要件定義書と `tech_stack` が既にあることが前提（無ければ先に bootstrap）。
+最初のステージは `feature` / `change` → `requirements`、`fix` → `spec`、`refactor` → `consistency`。`fix` / `refactor` は要件定義書と `tech_stack` が既にあることが前提（無ければ先に bootstrap）。
+
+**人間が確認するのは 2 か所だけ**: requirements の承認と、spec のレビュー（どちらも `feature` / `change` のとき）。`fix` / `refactor` は最初のステージから compliance まで止まらずに進む。それ以外で止まるのは、自動では片付かないことが起きたときだけ（hook の deny・エスカレーション・Plan Repair・implementer の `confidence < 0.5`・要件の意味を変えないと直せない指摘）。consistency の指摘は周回ごとの既定の方針で自動的に直し、implementer の `uncertainty_points` はレビュアーに判定させる。下流スキルにこれより多く人間に聞く記述が残っていたら、この段落を優先する。
 
 ## 状態管理
 
@@ -217,7 +219,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 
 ### STEP 5: 完了と次のステージ
 
-1. implementation のグループ完了通知では、最終回答の JSON で判定する: `confidence >= 0.8` かつ `needs_human_review = false` → そのまま進む / `0.5〜0.8` → 通知だけして進む / `< 0.5`、`needs_human_review = true`、`uncertainty_points` が空でない → AskUserQuestion で人間に確かめる
+1. implementation のグループ完了通知では、最終回答の JSON で判定する: `confidence >= 0.5` → 進む（`needs_human_review = true` や `uncertainty_points` はレビュアーに 1 件ずつ判定させる。implementation STEP D）/ `confidence < 0.5`、またはレビュアーが `needs_human` と判定した uncertainty がある → AskUserQuestion で人間に確かめる
 2. 「✓ {stage} 完了」と一行表示する。チェックリストのステージ進捗は hook が同期する（未導入なら `[ ]` → `[x]` を自分で）
 3. 次の動作：
 

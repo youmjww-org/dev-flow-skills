@@ -15,6 +15,7 @@
 | （hook ではない） | — | `mark-group-done.sh <N> [PR番号...] [--no-commit]` | implementation STEP H の機械的作業。グループ N のチェックリスト（全一覧も）を `[x]` に、`state.json` の `completed_groups` / `active_worktrees` / `pr_numbers` を更新し、1 コミットする。冪等 |
 | `PostToolUse` | `Agent` | `agent-complete.sh` | `stage-*-agent` 完了を `flow.log` に記録し所要時間を算出。requirements 完了時は人間確認ゲートを念押し |
 | `PreToolUse` | `Write\|Edit\|NotebookEdit` | `test-stage-guard.sh` | `next_stage == test` のとき、テストファイル（`*_test.go` / `test_*.py` / `*.test.ts` / `tests/` 等）と `doc/test-spec/` への書き込みを `deny`。test ステージはプロダクションコードしか直せない（DocDD） |
+| `PreToolUse` | `Bash` | `state-write-guard.sh` | `doc/process/state.json` を Bash（リダイレクト・`mv` / `cp`・`tee`・`sed -i`・スクリプトの `open(..., "w")`）で書き換えるのを `deny`。Bash で書くと `state-sync.sh`（Write / Edit のみ）が動かず、検証と `flow.log` への遷移記録が抜けるため。読むだけのコマンドは素通り |
 | `PreToolUse` | `Bash` | `pr-merge-guard.sh` | `gh pr merge` を捕まえ、自動マージ条件を検証。`main`/`develop`/`release/*`/`hotfix/*` 向けは常に `deny`。`feature/*` 向けは CI 全通過・コンフリクトなし・DB 破壊的変更なし（`db-destructive-patterns.txt`）・テストの削除/スキップなし（`test-guard-patterns.txt`）。DB 検査はテストファイル内の文字列（SQL インジェクション対策テストのデータ等）を対象外にする・`--merge` 方式のときだけ `allow` |
 | `Stop` | — | `stop-summary.sh` | 直近 10 分以内に dev-flow イベントがあった場合のみ、次ステージとアクションを表示 |
 

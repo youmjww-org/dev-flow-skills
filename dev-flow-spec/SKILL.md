@@ -140,6 +140,8 @@ reviewer は最終回答として `{"status":"approved"|"changes_requested","iss
 
 ## STEP 2: 人間レビュー
 
+`kind = "fix"` では人間レビューを行わない。すべての reviewer が `approved` なら、そのまま「出力」へ進む（修正ループの上限に達して指摘が残ったときだけ、残りの指摘を AskUserQuestion で人間に出す）。`feature` / `change` では以下を行う。
+
 AskUserQuestion ツールで以下を同時に提示してレビューを依頼（`change` / `fix` では `status: added|modified` の項目と `git diff` の要約を先に示し、変更箇所に絞ってレビューしてもらう）：
 
 - テスト定義書（TEST_SPEC_PATH）

@@ -32,6 +32,12 @@
             "command": "$HOME/.claude/skills/dev-flow/hooks/pr-merge-guard.sh",
             "timeout": 60,
             "statusMessage": "dev-flow 自動マージ条件検証"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/skills/dev-flow/hooks/state-write-guard.sh",
+            "timeout": 10,
+            "statusMessage": "dev-flow state.json 書き込みガード"
           }
         ]
       },

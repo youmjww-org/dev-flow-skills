@@ -255,7 +255,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 | status | blocker_type | 対応 |
 |---|---|---|
-| `"completed"` | — | `result.lint.exit_code` が **0 以外、または欠損**なら「lint / format / 型検査が通っていない」として同じ implementer を `SendMessage` で再開して解消させる（最大 2 回、それでも通らなければ `failed` 扱い）。**Dev implementer** は加えて `result.unit_tests.failed` が 0 でない、または `result.coverage.changed_functions_below_threshold` が**空でなければ**「ユニットテストを直す / 未到達分岐のユニットテストを追加する」よう再開させる（最大 2 回。テストを減らす方向の修正は却下）。`result.mutation` が無い、または `killed: false` が残っていれば「新しいテストごとにミューテーション確認（[conventions/testing.md](reference/conventions/testing.md)「ミューテーション確認」）をして、生き残った変異はテストを強化する」よう再開させる（最大 2 回）。**QA implementer** の `result.tests.failed` は Dev 実装が無い worktree では非 0 が正常なので、`note` に「Dev 実装待ち」以外の原因（構文エラー・セットアップ不備）が書かれている場合だけ再開させる。通ったら `result.commits` をログに記録して次の処理へ進む |
+| `"completed"` | — | `result.lint.exit_code` が **0 以外、または欠損**なら「lint / format / 型検査が通っていない」として同じ implementer を `SendMessage` で再開して解消させる（最大 2 回、それでも通らなければ `failed` 扱い）。**Dev implementer** は加えて `result.unit_tests.failed` が 0 でない、または `result.coverage.changed_functions_below_threshold` が**空でなければ**「ユニットテストを直す / 未到達分岐のユニットテストを追加する」よう再開させる（最大 2 回。テストを減らす方向の修正は却下）。`result.mutation` が無い、または `killed: false` が残っていれば「新しいテストごとにミューテーション確認（[conventions/testing.md](reference/conventions/testing.md)「ミューテーション確認」）をして、生き残った変異はテストを強化する」よう再開させる（最大 2 回）。**QA implementer** の `result.tests.failed` は Dev 実装が無い worktree では非 0 が正常なので、`note` に「Dev 実装待ち」以外の原因（構文エラー・セットアップ不備）が書かれている場合だけ再開させる。通ったら `result.commits` をログに記録して次の処理へ進む。`needs_human_review = true` や `uncertainty_points` があっても、ここでは人間に聞かない（STEP D でレビュアーに判定させる）。最終回答に JSON が無い（途中終了など）ときは、`git log` のコミットと STEP C.5 の統合検証の結果で代わりに確かめる |
 | `"blocked"` | `"plan_repair_needed"` | **Plan Repair フローへ移行**（下記参照） |
 | `"blocked"` | その他 | AskUserQuestion で人間に判断を仰ぐ |
 | `"failed"` | — | AskUserQuestion で人間に報告し指示を仰ぐ |
@@ -310,6 +310,10 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 再レビューでは前回の `findings` と修正担当の `review_responses` をレビュアーに渡し、前回の指摘が 1 件ずつ解消したかを確認させる。
 
+**implementer の不確実点:** 対応する implementer の完了 JSON の `uncertainty_points` を、レビュアーのプロンプト末尾に JSON のまま付ける。レビュアーは 1 件ずつ `resolved`（コード・仕様書から妥当と判断できる）/ `needs_human`（要件の解釈が要る）を最終回答の `uncertainty_verdicts` で返す。`needs_human` が 1 件でもあるときだけ AskUserQuestion で人間に確かめる。
+
+**レビュー結果の保存:** レビュアーの最終回答 JSON は受け取ったらすぐ `doc/process/reviews/group-{N}-{dev|qa}-{infra|app}-r{回数}.json` に Write する（メインの作業ディレクトリ。STEP H の集約は会話の記憶ではなくこのファイルから行う。セッションをまたいでも rule 名が残る）。
+
 #### Dev (Infra) レビュー（Infra / Cross グループ）
 
 Agent を起動（同期実行、`run_in_background=false`, `model="opus"`）。現行の Agent ツールにはツール制限パラメータが無いため、プロンプト冒頭に「**ファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認し、指摘は最終回答で返す（ミューテーション結果の再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を必ず含める：
@@ -330,7 +334,7 @@ QA レビュアーは「素朴な質問だけ」する観点を採用: コード
 
 #### QA (App) レビュー（App / Cross グループ）
 
-App QA のシニアレビュアーエージェントを起動（`model="opus"`、編集禁止をプロンプトに明記、QA 素朴質問観点）。
+App QA のシニアレビュアーエージェントを起動（`model="opus"`、編集禁止をプロンプトに明記、QA 素朴質問観点。implementer の `uncertainty_points` の判定も Dev レビューと同じく `uncertainty_verdicts` で返させる）。
 `{REVIEW_CHECKLIST}` の `test/*` と言語のテスト関連ルールを照合（Infra QA と同じ基準）。出力は同じ JSON。`changes_requested` → qa-implementer-app-group-N に渡して修正（最大5回）。
 
 
@@ -435,7 +439,7 @@ jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/s
    - App: `dev/app-group-N`, `qa/app-group-N`
    - Cross: 上記4ブランチすべて
 1.5. **実バージョンの確認（基盤グループのみ）**: 「実バージョンの書き戻し」タスクを含むグループなら、マージ後の `state.json.tech_stack.language_version` / `framework_version` が lock ファイルと一致しているか `jq` で確認する。タスクが書き戻していなければオーケストレーターが lock から読んで `state.json` だけ更新する（要件定義書は人間確認が要るので、compliance の乖離として残す）
-2. **レビュー findings の集約**: このグループの全レビュー（Dev / QA）の `findings` のうち、`rule` が `review/*`（規約ファイルに無かった指摘）で、かつプロジェクト固有でない汎用的なもの（例: `role="button"` の Space キー未対応、`aria-live` の常時マウント、`onClick={async}` の floating promise、`{n && <X />}` の 0 描画）を `doc/process/review-findings-backlog.md` に追記する（`| グループ | rule | severity | 内容 | 該当ファイル | 昇格先候補（react.md / laravel.md / testing.md 等） |` の表。同じ内容が既にあれば行を足さず「回数」列を増やす）。memory 保存の条件（同一 rule 3 回）に届かない minor / major の指摘が次のプロジェクトで消えないようにするため。compliance の完了レポートで「規約ファイルへの昇格候補」として人間に提示する
+2. **レビュー findings の集約**: `doc/process/reviews/group-{N}-*.json`（STEP D で保存したもの）を Read し、このグループの全レビュー（Dev / QA）の `findings` のうち、`rule` が `review/*`（規約ファイルに無かった指摘）で、かつプロジェクト固有でない汎用的なもの（例: `role="button"` の Space キー未対応、`aria-live` の常時マウント、`onClick={async}` の floating promise、`{n && <X />}` の 0 描画）を `doc/process/review-findings-backlog.md` に追記する（`| グループ | rule | severity | 内容 | 該当ファイル | 昇格先候補（react.md / laravel.md / testing.md 等） |` の表。同じ内容が既にあれば行を足さず「回数」列を増やす）。memory 保存の条件（同一 rule 3 回）に届かない minor / major の指摘が次のプロジェクトで消えないようにするため。compliance の完了レポートで「規約ファイルへの昇格候補」として人間に提示する
 3. `${CLAUDE_SKILL_DIR}/../dev-flow/hooks/mark-group-done.sh N <PR番号...>` を実行する（1 回の Bash で）。チェックリストのグループ N（全一覧セクションの同一タスクも）を `[x]` にし、`state.json` の `completed_groups` / `active_worktrees` / `pr_numbers` を更新して 1 コミットする。冪等なので再開時に再実行してよい。hook 未導入環境（スクリプトが無い）では同じ内容を手で行う：チェックリストの `[x]` 化 → `implementation_progress` の更新 → 2 ファイルを 1 コミット
 
 ---

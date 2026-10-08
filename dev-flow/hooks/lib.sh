@@ -184,8 +184,14 @@ sync_checklist() {
 # ---------------------------------------------------------------------------
 
 # 時系列ログに 1 行追記。形式: `2026-09-03T19:43:00+0900 event=... key=value ...`
+# flow.log は hook が最後のコミットの後にも書くので git では追跡しない。新しく作るときに
+# doc/process/.gitignore へ足す（既に追跡されている flow.log はそのまま）。
 log_flow() {
   [ -d "$PROCESS_DIR" ] || return 0
+  if [ ! -f "$FLOW_LOG" ] && git -C "$PROCESS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+     && ! grep -qx 'flow.log' "$PROCESS_DIR/.gitignore" 2>/dev/null; then
+    printf 'flow.log\n' >> "$PROCESS_DIR/.gitignore"
+  fi
   printf '%s %s\n' "$(TZ=Asia/Tokyo date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >> "$FLOW_LOG"
 }
 

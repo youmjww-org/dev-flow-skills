@@ -32,6 +32,8 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 
 **再レビューのとき:** 前回の `findings` と implementer の `result.review_responses` が渡される。前回の blocker / major が 1 件ずつ解消したかを確認し、`not_fixed` の理由が妥当でなければ同じ `rule` でもう一度挙げる。
 
+**implementer の不確実点:** プロンプト末尾に implementer の `uncertainty_points` が付いていれば、1 件ずつコードと仕様書で確かめ、`uncertainty_verdicts` に `resolved`（妥当と判断できる。理由を書く）か `needs_human`（要件の解釈が要り、レビュアーでは決められない）を返す。直すべき問題なら `findings` にも挙げる。
+
 **規約チェックリスト（照合必須）:**
 {REVIEW_CHECKLIST}
 （言語・フレームワーク・プロジェクト規約のルール ID・重大度・確認方法。「確認方法」の grep は実際に実行して確認する）
@@ -50,7 +52,10 @@ blocker / major は**見つけたものをすべて**挙げる。minor は最大
     {"severity": "blocker", "rule": "go/sql-injection", "file": "internal/repo/user.go", "line": 42, "problem": "WHERE 句を Sprintf で組み立てている", "fix": "プレースホルダ $1 と引数渡しに変える"},
     {"severity": "minor", "rule": "go/naming", "file": "internal/repo/user.go", "line": 10, "problem": "レシーバ名が r と repo で混在", "fix": "r に統一"}
   ],
-  "checked_rules": ["go/sql-injection", "go/errors-wrap", "..."]
+  "checked_rules": ["go/sql-injection", "go/errors-wrap", "..."],
+  "uncertainty_verdicts": [
+    {"point": "（implementer の uncertainty_points の文面）", "verdict": "resolved | needs_human", "reason": "…"}
+  ]
 }
 ```
 

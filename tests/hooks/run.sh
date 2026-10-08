@@ -735,5 +735,57 @@ assert_not_contains "全 REQ をカバーすれば WARN は出ない" "$(reason 
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------
+# state-write-guard.sh
+# ---------------------------------------------------------------------------
+section "state-write-guard.sh"
+dir="$(new_project)"
+write_state "$dir" implementation
+for c in 'jq ".next_stage=\"test\"" doc/process/state.json > /tmp/s.json && mv /tmp/s.json doc/process/state.json' \
+         'echo "{}" > doc/process/state.json' \
+         'jq . x.json | tee doc/process/state.json' \
+         "sed -i 's/a/b/' doc/process/state.json" \
+         'cp /tmp/s.json doc/process/state.json' \
+         "python3 -c 'import json; json.dump({}, open(\"doc/process/state.json\", \"w\"))'"; do
+  out="$(run_hook state-write-guard.sh "$dir" "$(bash_json "$c")")"
+  assert_eq "書き込みは deny: ${c:0:50}" "$(decision "$out")" "deny"
+done
+for c in 'jq -r .next_stage doc/process/state.json' \
+         'cat doc/process/state.json > /tmp/backup.json' \
+         'cp doc/process/state.json /tmp/backup.json' \
+         'git add doc/process/state.json && git commit -m x' \
+         "git commit -F - <<'EOF'
+state.json を jq > state.json で書いていたのを直す
+EOF" \
+         'bash ~/.claude/skills/dev-flow/hooks/mark-group-done.sh 1 12 13'; do
+  out="$(run_hook state-write-guard.sh "$dir" "$(bash_json "$c")")"
+  assert_empty "読むだけ・対象外は素通り: ${c:0:50}" "$out"
+done
+rm -f "$dir/doc/process/state.json"
+out="$(run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')")"
+assert_empty "state.json が無いプロジェクトでは何もしない" "$out"
+rm -rf "$dir"
+
+# flow.log は git で追跡しない（新しく作るとき doc/process/.gitignore に足す）
+dir="$(new_project)"; git -C "$dir" init -q
+write_state "$dir" implementation
+run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
+assert_eq "git 管理下で flow.log を作ると .gitignore に足す" "$(cat "$dir/doc/process/.gitignore" 2>/dev/null)" "flow.log"
+run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
+assert_eq "  2 回目は足さない" "$(grep -c . "$dir/doc/process/.gitignore")" "1"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
+# doc-validate: _ で始まる補助ファイル
+# ---------------------------------------------------------------------------
+section "doc-validate: 補助ファイル（_glossary.md 等）"
+dir="$(new_project)"; cp -R "$SAMPLE/." "$dir/"
+printf '# 用語集\n\n| 用語 | 定義 | 備考 |\n|---|---|---|\n| 単語 | 空白で区切られた文字列 | REQ-002 |\n' > "$dir/doc/requirements/_glossary.md"
+out="$(run_hook doc-validate.sh "$dir" "$(write_json doc/requirements/_glossary.md)")"
+assert_eq "frontmatter の無い _glossary.md は差し戻さない" "$(hook_rc)" "0"
+out="$(python3 "$HOOKS/doc-validate.py" --project-dir "$dir" --all)"
+assert_not_contains "--all でも _glossary.md を検証しない" "$out" "_glossary.md"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

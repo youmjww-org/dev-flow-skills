@@ -23,6 +23,7 @@
 | テストコード書き込み後 | `test-lint.sh` | skip・assert なし・空テスト・エラー握りつぶし・（シェル）同じ値どうしの比較は差し戻し。sleep / 現在時刻 / 乱数 / tautology、（シェル）`grep -c`・trap の無い復元・WARN だけの失敗・IPv4 限定の照合は WARN |
 | test ステージでの書き込み前 | `test-stage-guard.sh` | テストコード・テスト定義書への Write / Edit を `deny` |
 | `gh pr merge` 実行前 | `pr-merge-guard.sh` | 下の「自動マージ条件」を検証し、満たさなければ `deny` |
+| Bash 実行前 | `state-write-guard.sh` | `state.json` を Bash（リダイレクト・`mv` / `cp`・`tee`・`sed -i`・スクリプトの書き込み）で書き換えるのを `deny`。state.json は必ず Read してから Write / Edit で書く |
 | セッション開始 / 応答完了 | `session-start.sh` / `stop-summary.sh` | 進行中の run の次ステージとアクションを表示。ブランチが origin より遅れていれば警告 |
 | （Bash から呼ぶ） | `verify-remote-state.sh` | `git fetch` してブランチの ahead / behind、PR の state、CI の結果を 1 行ずつ OK / NG で出す |
 

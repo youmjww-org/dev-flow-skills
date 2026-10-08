@@ -92,10 +92,11 @@ Tests: TC-001, TC-002
 - `Tests:` に対応するテストケース TC-ID を記載（テストが存在する場合）
 - ID が不明な場合はタスクチェックリストまたはスペックキャッシュを参照
 - **チェックリストの更新はしない**（マージ後にオーケストレーターが行う）
+- `Co-Authored-By` などの署名を付けるなら、**自分（このエージェント）の実際のモデル名**を書く。プロンプトや既存のコミットからコピーしない
 
 **4.5. 推論トレースの記録（全タスク完了前）:**
 
-実装中に行った主要な意思決定を `{メインディレクトリ}/doc/process/reasoning/implementation-dev-app-group-{GROUP_N}.md` に記録してください：
+実装中に行った主要な意思決定を `{メインディレクトリ}/doc/process/reasoning/implementation-dev-app-group-{GROUP_N}.md` に記録してください。ファイルが既にあれば（前の run のもの）**上書きせず末尾に追記**し、節の見出しに日付と今回の task を書く：
 
 ```markdown
 # implementation Dev (App) グループ {GROUP_N} - 推論トレース

@@ -322,7 +322,7 @@ implementation 中にエージェントが「計画誤り」を検出した場�
 
 #### 構造化通知スキーマ
 
-実装・QA エージェントは以下の JSON で完了・ブロッカーを報告します。`uncertainty_points` が1件以上ある場合は `needs_human_review: true` とし、レビュー時に人間が確認します。
+実装・QA エージェントは以下の JSON で完了・ブロッカーを報告します。`uncertainty_points` が1件以上ある場合は `needs_human_review: true` とし、レビュアーが 1 件ずつ判定します（要件の解釈が要るものだけ人間に確認します）。
 
 ```json
 {

@@ -60,7 +60,7 @@
 |---|---|---|---|
 | 0 | bootstrap | 既存コードの棚卸し、as-is の要件定義書・テスト定義書・API / インフラ仕様書・カバレッジ行列を生成 | 人間が確認してから `/dev-flow --kind=...` |
 | 1 | requirements | 対話で要件を深掘りし、REQ-NNN 付きの要件定義書と用語集を作る | **人間が確認**してから `/dev-flow` |
-| 2 | spec | テスト定義書（TC）・API 仕様書・インフラ仕様書・UI モックを並列で作り、reviewer が確認 | 自動で次へ |
+| 2 | spec | テスト定義書（TC）・API 仕様書・インフラ仕様書・UI モックを並列で作り、reviewer が確認 | `feature` / `change` は**人間がレビュー**してから次へ（同じターンで質問が出る）。`fix` は自動で次へ |
 | 3 | consistency | ID の整合性、カバレッジ行列、依存関係付きのタスク分解（`task_checklist.md`）、設計凍結 | 自動で次へ |
 | — | plan_repair | implementation 中に計画誤りが見つかったとき、未着手グループのチェックリストだけ作り直す（最大 3 回） | implementation に戻る |
 | 4 | implementation | グループごとに worktree を作り、Dev / QA が並列で実装 → 統合検証 → レビュー → PR → 条件付き自動マージ | PR が人間マージ待ちならそこで止まる。マージ後に `/dev-flow` |
@@ -86,6 +86,7 @@
 | テストコード書き込み後 | `test-lint.sh` | skip・assert なし・空テスト・エラー握りつぶしを差し戻す |
 | test ステージでの書き込み前 | `test-stage-guard.sh` | テストコードとテスト定義書の変更を拒否 |
 | `gh pr merge` の前 | `pr-merge-guard.sh` | 自動マージ条件を検証（`--man merge`） |
+| Bash の前 | `state-write-guard.sh` | `state.json` を Bash（リダイレクト・`mv`・`sed -i` 等）で書くのを拒否。Write / Edit で書けば `state-sync.sh` が検証と記録を行う |
 | セッション開始・応答完了 | `session-start.sh` / `stop-summary.sh` | 進行中の run と次のアクションを表示 |
 
 hook が入っていない（`setup.sh --no-hooks`）環境では自動マージをしない。詳細は `~/.claude/skills/dev-flow/hooks/README.md`。

@@ -25,6 +25,7 @@ disable-model-invocation: true
   - `refactor`: `task` のみ。QA タスク = 既存テストが全通過することの確認（新規 TC なし）、Dev タスク = task に書かれた内部改善
   - グループ種別は変更対象ファイルから判定（IaC のみなら Infra、それ以外は App、両方なら Cross）
 - spec-cache-writer は `fix` では実行（追加 TC を反映）、`refactor` ではスキップ
+- `fix` では、`doc/process/coverage_matrix.md` の該当 REQ の行の「テストID」列に追加 TC（`status: added`）の ID を Edit で書き足す（行列全体は作り直さない。ファイルが無ければ飛ばす）
 - STEP 5 の設計凍結コミットは実行する
 
 **`mini` モードの動作:**

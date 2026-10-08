@@ -11,7 +11,7 @@
 
 ## hook の一覧
 
-`setup.sh` が `~/.claude/settings.json` に登録する（`dev-flow/hooks/`）。プロンプトでは緩められない。hook が動いていれば該当する手作業は不要（結果は `additionalContext` で届く）。未導入環境（`setup.sh --no-hooks`）では各 STEP の記述どおり手で行う。
+`setup.sh` が `~/.claude/settings.json` に登録する（`dev-flow/hooks/`）。プロンプトでは緩められない。スキルの frontmatter の `hooks:` はサブエージェントのツール呼び出しでは動かないので使わない（README「Hook 連携」）。hook が動いていれば該当する手作業は不要（結果は `additionalContext` で届く）。未導入環境（`setup.sh --no-hooks`）では各 STEP の記述どおり手で行う。
 
 | タイミング | hook | 内容 |
 |---|---|---|

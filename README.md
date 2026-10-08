@@ -57,7 +57,7 @@ flowchart TD
 | 1. requirements | `/dev-flow-requirements` | 対話で要件深掘り・曖昧表現リント・用語集整備・REQ-NNN 付与 | Opus 4.7 |
 | 2. spec | `/dev-flow-spec` | テスト/API/インフラ/モックを並列生成（OpenAPI 3.1.0 / Gherkin） | Haiku（子: Sonnet） |
 | 3. consistency | `/dev-flow-consistency` | Impact Analysis（incremental のみ）・ID整合性・カバレッジ行列・DAG分類・設計凍結 | Haiku（子: Opus / Sonnet） |
-| 4. implementation | `/dev-flow-implementation` | DAG依存解決・並列実装・推論トレース・Plan Repair | Sonnet → Opus |
+| 4. implementation | `/dev-flow-implementation` | DAG依存解決・並列実装・設計判断の記録・Plan Repair | Sonnet → Opus |
 | 5. test | `/dev-flow-test` | 自動モデル昇格でテスト全通過 | Haiku → Sonnet |
 | 6. compliance | `/dev-flow-compliance` | カバレッジ行列で機械検証・完了報告 | Opus 4.7 |
 
@@ -411,8 +411,8 @@ dev-flow-skills/
 │   ├── scripts/
 │   │   └── ensure-worktree.sh      # STEP A worktree 作成と依存物・.env の準備
 │   └── prompts/                    # エージェントプロンプト（チーム別）
-│       ├── dev-infra.md            # Infra Dev（推論トレース・JSON通知）
-│       ├── dev-app.md              # App Dev（推論トレース・JSON通知）
+│       ├── dev-infra.md            # Infra Dev（設計判断の記録・JSON通知）
+│       ├── dev-app.md              # App Dev（設計判断の記録・JSON通知）
 │       ├── qa-infra.md             # Infra QA（JSON通知）
 │       └── qa-app.md               # App QA（JSON通知）
 ├── dev-flow-test/                  # 5. test
@@ -465,8 +465,8 @@ dev-flow-skills/
     ├── flow.log                    # hooks が記録する時系列イベントログ
     ├── coverage_matrix.md          # カバレッジ行列（REQ × TC × API）
     ├── plan_repair_log.md          # Plan Repair 履歴
-    ├── reasoning/
-    │   └── implementation-*.md     # 実装エージェントの推論トレース
+    ├── decisions/
+    │   └── implementation-*.md     # 実装で決めた設計判断（ADR 形式）
     └── escalation_*.md             # エスカレーション報告（発生時のみ）
 ```
 

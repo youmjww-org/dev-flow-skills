@@ -1,0 +1,29 @@
+# hook の単体テストと規約ファイルの構造チェック。LLM は使わない（数秒で終わる）。
+# このリポジトリは public なので、org のセルフホステッドランナー（public からは使えない設定）ではなく
+# GitHub ホステッドランナーで動かす。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: hook の単体テスト
+        run: bash tests/hooks/run.sh
+
+      - name: 規約ファイルの構造チェック
+        run: python3 tests/check-conventions.py

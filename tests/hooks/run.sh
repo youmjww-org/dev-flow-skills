@@ -687,6 +687,9 @@ assert_contains "--expect-merged で未マージは NG" "$out" "NG   PR #101: st
 assert_contains "マージ済みは OK" "$out" "OK   PR #120: state=MERGED"
 out="$(vr 103)"
 assert_contains "CI 失敗は NG（チェック名付き）" "$out" "失敗: ci=FAILURE"
+out="$(vr --expect-merged 122)"
+assert_contains "マージ済み PR の CI 失敗は INFO（人間がマージした）" "$out" "INFO PR #122: state=MERGED"
+assert_contains "  NG には数えない" "$out" "summary: NG 0"
 out="$(vr 121)"
 assert_contains "CI 実行中は NG（推測で書かせない）" "$out" "未完了: ci"
 ( cd "$vr_root/other" && git fetch -q origin && git checkout -q feature/x && echo b > b && git add b && git commit -qm b && git push -q origin feature/x 2>/dev/null )

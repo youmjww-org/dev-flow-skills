@@ -10,6 +10,7 @@
 #
 # 出力は 1 行 1 項目で、先頭が OK / NG / INFO。状況報告ではこの出力をそのまま引用する（推測で「CI 実行中」「全件パス」と書かない）。
 # 終了コード: 0 = NG なし / 1 = NG あり（behind・CI 失敗・CI 未完了・--expect-merged で未マージ）/ 2 = 使い方の誤り
+# マージ済み PR の CI 失敗（人間が判断してマージしたもの）は NG ではなく INFO にする。
 # flow.log に event=remote_verified result=ok|ng を記録する（state-sync.sh が implementation → test の移行時に確認する）。
 set -u
 source "$(dirname "$0")/lib.sh" </dev/null
@@ -97,7 +98,11 @@ if [ ${#PRS[@]} -gt 0 ] && command -v gh >/dev/null 2>&1; then
     IFS="|" read -r TOTAL OKN PENDING FAILED <<< "$CHECKS"
     URL="$(printf '%s' "$J" | jq -r '.url // empty')"
     DESC="PR #$n: state=$STATE_ checks=$OKN/$TOTAL 成功 ${URL}"
-    if [ -n "$FAILED" ]; then
+    if [ -n "$FAILED" ] && [ "$STATE_" = "MERGED" ]; then
+      # 自動マージ（pr-merge-guard）は CI 失敗の PR を通さないので、これは人間の判断でマージされたもの。
+      # マージ済み PR のチェック結果は後から変わらないため NG にはしない（統合後のコードは test ステージで全件実行する）。
+      info "$DESC マージ済みだが PR 単体の CI は失敗: ${FAILED}（人間がマージした。統合後のテスト結果で判断する）"
+    elif [ -n "$FAILED" ]; then
       ng "$DESC 失敗: ${FAILED}（gh run view --log-failed で原因を見る）"
     elif [ -n "$PENDING" ] && [ "$STATE_" != "MERGED" ]; then
       ng "$DESC 未完了: ${PENDING}（完了を待つ。推測で結果を書かない）"

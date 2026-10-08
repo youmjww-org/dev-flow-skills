@@ -7,7 +7,7 @@ Claude Code 用の AI 駆動開発フロースキルです。要件定義 → �
 ## クイックスタート
 
 ```bash
-git clone git@github.com:youmjww/dev-flow-skills.git ~/dev-flow-skills
+git clone git@github.com:youmjww-org/dev-flow-skills.git ~/dev-flow-skills
 bash ~/dev-flow-skills/setup.sh
 ```
 

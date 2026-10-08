@@ -160,53 +160,12 @@ while 未完了グループが存在する:
 | `App` | Dev (App) + QA (App) のみ | インフラチームは起動しない |
 | `Cross` | Dev (Infra) → QA (Infra) → Dev (App) → QA (App) | インフラ実装・テスト完了後にアプリ実装を開始（直列） |
 
-まず作業ディレクトリの絶対パスを確認します：
-
-```bash
-MAIN_DIR=$(pwd)
-echo "メインディレクトリ: $MAIN_DIR"
-```
-
-グループ N のチーム種別に応じて必要な worktree のみ作成します。共通関数:
-
-```bash
-ensure_worktree() {
-  local role="$1" team="$2"  # role: dev|qa / team: infra|app
-  local path="${MAIN_DIR}/../worktree-${role}-${team}-group-N"
-  local branch="${role}/${team}-group-N"
-  if git worktree list | grep -q "$(basename "$path")"; then
-    echo "${role} (${team}) worktree 既存 → 再利用"
-  else
-    git worktree add "$path" -b "$branch"
-  fi
-  seed_worktree "$path"
-}
-
-# gitignore されている依存物と .env を worktree に用意する。各 implementer / reviewer が
-# composer install / npm install / .env 作成をやり直す時間（実戦で 10 回以上）を省く。
-# node_modules はシンボリックリンクだと Vite / Vitest のパス解決で問題が出るためコピーする。
-seed_worktree() {
-  local wt="$1"
-  # サブプロジェクト（backend/ frontend/ 等）も含めて、メイン側にある依存ディレクトリを同じ相対パスへ
-  for dep in vendor node_modules .venv; do
-    find "$MAIN_DIR" -maxdepth 3 -type d -name "$dep" -not -path "*/$dep/*" 2>/dev/null | while read -r src; do
-      rel="${src#"$MAIN_DIR"/}"
-      [ -e "$wt/$rel" ] || { mkdir -p "$(dirname "$wt/$rel")"; cp -R "$src" "$wt/$rel"; }
-    done
-  done
-  # .env は .env.example から生成（メインの .env に秘密が入っている可能性があるのでコピーしない）
-  find "$wt" -maxdepth 3 -name ".env.example" -not -path "*/node_modules/*" -not -path "*/vendor/*" 2>/dev/null | while read -r ex; do
-    [ -e "${ex%.example}" ] || cp "$ex" "${ex%.example}"
-  done
-}
-```
-
-`seed_worktree` はメインに依存物が無ければ何もしない（最初の基盤グループでは implementer 自身が `install` する）。Laravel の `APP_KEY` など `.env` 生成後に初期化が要るものは implementer が `php artisan key:generate` 等で行う（`doc/process/environment.md` に書いておく）。
+メインの作業ディレクトリ（`MAIN_DIR=$(pwd)`）で、必要な worktree を `${CLAUDE_SKILL_DIR}/scripts/ensure-worktree.sh <dev|qa> <infra|app> <N>` で作る。既存なら再利用し、メイン側の `vendor` / `node_modules` / `.venv` のコピーと `.env.example` からの `.env` 作成までを行う（メインの `.env` は秘密を含みうるのでコピーしない）。最後の行に worktree の絶対パスを出す。Laravel の `APP_KEY` など `.env` 作成後の初期化は implementer が行う（`doc/process/environment.md` に書いておく）。
 
 | チーム種別 | 作成する worktree |
 |---|---|
-| **Infra** | `ensure_worktree dev infra` + `ensure_worktree qa infra` |
-| **App** | `ensure_worktree dev app` + `ensure_worktree qa app` |
+| **Infra** | `ensure-worktree.sh dev infra N` + `ensure-worktree.sh qa infra N` |
+| **App** | `ensure-worktree.sh dev app N` + `ensure-worktree.sh qa app N` |
 | **Cross** | Infra と App の 4 つすべて |
 
 worktree 作成後、state.json の `implementation_progress.active_worktrees` に作成したブランチ名を追加します：
@@ -284,7 +243,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 ### STEP C: エージェントの完了待機
 
-グループのチーム種別に応じて、各エージェントの完了通知（最終回答の JSON）を待ちます。`sleep` ポーリングはしません。ただし、タイムアウト目安（cost: STEP 3.5 相当、モデル別に haiku=5分/sonnet=15分/opus=30分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えても完了通知が無い場合は、`${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` の手順でハングかどうかを切り分け、該当すれば同ファイルの fork フォールバックで当該エージェントを再起動する：
+グループのチーム種別に応じて、各エージェントの完了通知（最終回答の JSON）を待ちます。`sleep` ポーリングはしません。ただし、タイムアウト目安（cost: モデル別に haiku=5分/sonnet=15分/opus=30分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えても完了通知が無い場合は、`${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` の手順でハングかどうかを切り分け、該当すれば同ファイルの fork フォールバックで当該エージェントを再起動する：
 
 - **Infra**: `dev-implementer-infra-group-N` + `qa-implementer-infra-group-N` の両方
 - **App**: `dev-implementer-app-group-N` + `qa-implementer-app-group-N` の両方

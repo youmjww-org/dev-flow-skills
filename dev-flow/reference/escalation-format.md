@@ -53,4 +53,4 @@
 
 エスカレーション報告では、AskUserQuestion で人間に「`/dev-flow --from={値}` を実行してください」と提示し、ユーザーに再開を委ねる。
 
-**例外：`plan_repair` のみ、implementation 内部の閉じたサイクルとして `next_stage` を書き換える運用を許可する**（詳細は `dev-flow/SKILL.md` の「`plan_repair` 特別処理」を参照）。
+**例外：`plan_repair` のみ、implementation 内部の閉じたサイクルとして `next_stage` を書き換える運用を許可する**（詳細は `dev-flow/SKILL.md` STEP 4 と `reference/cost-mode.md`「Plan Repair の流れ」を参照）。

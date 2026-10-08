@@ -14,7 +14,7 @@ Agent 起動直後から、以下の基準でハングを判定する。
 2. **生存確認**: 変化が無ければ `SendMessage` で当該エージェントに一行の生存確認（例:「`echo "alive check: $(date)"` だけを実行して結果を報告して」）を送る。
 3. **最終判定（タイムアウト目安に到達した時点）**: 生存確認への応答が無く、かつ対象ファイルにも変化が無ければハングと判定する。
 
-タイムアウト目安は STEP 3.5 の基準を使う。cost は haiku=5分 / sonnet=15分 / opus=30分で、一次確認はその半分の時点。quality はモデルに関係なく起動 5 分後に一次確認し、生存確認に 3 分応答が無ければハングと判定する（`reference/profiles.md`「待ち時間とハング検知」）。
+タイムアウト目安は `reference/profiles.md`「待ち時間とハング検知」の基準を使う。cost は haiku=5分 / sonnet=15分 / opus=30分で、一次確認はその半分の時点。quality はモデルに関係なく起動 5 分後に一次確認し、生存確認に 3 分応答が無ければハングと判定する（`reference/profiles.md`「待ち時間とハング検知」）。
 
 ## フォールバック手順
 
@@ -44,7 +44,7 @@ Agent 起動直後から、以下の基準でハングを判定する。
 2. fork では再起動**しない**。代わりに、その中間管理エージェントが実行するはずだった手順（対応する `dev-flow-*/SKILL.md` の内容）を、**呼び出し元（オーケストレーター、通常は `/dev-flow` を実行しているこのセッション自身）が直接引き継いで実行する**。具体的には、該当スキルの STEP 0 以降を自分で読み進め、`state.json` の更新・worktree 作成・Dev/QA/レビュアーの起動を自分の Agent ツールで直接行う（この場合、起動する Dev/QA/レビュアーは末端の実行者なので pane 型のままでよく、それらがハングすれば通常どおり fork フォールバックが効く）。
 3. 人間には「{中間管理エージェント名} がハングしたため、オーケストレーターが直接そのステージを実行しています」と一行で伝える。
 
-この制約は cost プロファイルで `dev-flow/SKILL.md` STEP 4 が起動する `stage-*-agent`（特に `stage-implementation-agent`）に当てはまる。quality ではオーケストレーターが最初からステージを直接実行するので、中間管理エージェントは存在しない。`dev-flow-implementation/SKILL.md` の STEP B・STEP D で起動される Dev/QA implementer・レビュアー自身は末端の実行者なので、通常どおり fork フォールバックが有効。
+この制約は cost プロファイルで `reference/cost-mode.md` の対応表から起動する `stage-*-agent`（特に `stage-implementation-agent`）に当てはまる。quality ではオーケストレーターが最初からステージを直接実行するので、中間管理エージェントは存在しない。`dev-flow-implementation/SKILL.md` の STEP B・STEP D で起動される Dev/QA implementer・レビュアー自身は末端の実行者なので、通常どおり fork フォールバックが有効。
 
 ## 既知の制約
 

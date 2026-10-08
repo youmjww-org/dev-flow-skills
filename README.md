@@ -368,8 +368,13 @@ implementation 中にエージェントが「計画誤り」を検出した場�
 ```
 dev-flow-skills/
 ├── dev-flow/                       # メインオーケストレーター
-│   ├── SKILL.md                    # 状態管理・ステージ遷移・サブエージェント起動
-│   ├── reference/                  # state.json スキーマ・エスカレーション・エラー対処
+│   ├── SKILL.md                    # 状態管理・ステージ遷移（判断と手順の骨格だけ）
+│   ├── reference/
+│   │   ├── profiles.md             # quality / cost の役割ごとのモデル・待ち時間
+│   │   ├── cost-mode.md            # cost でのステージエージェント起動（対応表・起動テンプレート・Plan Repair）
+│   │   ├── hooks-and-merge.md      # hook 一覧・PR マージの分担・自動マージ条件
+│   │   ├── help.md / manual.md     # --help / --man の表示内容
+│   │   └── state-schema.md ほか    # state.json スキーマ・ハング対策・エスカレーション・エラー対処
 │   └── hooks/                      # 決定的検証（起動前チェック・状態同期・PR マージガード）
 ├── dev-flow-bootstrap/             # 0. bootstrap（既存プロジェクト導入・1 回だけ）
 │   ├── SKILL.md
@@ -402,6 +407,8 @@ dev-flow-skills/
 │   │   ├── merge-ops.md            # STEP G マージ運用（順序・UNKNOWN・deny 理由の分類）
 │   │   ├── conventions/            # 規約とレビューチェックリスト（testing / maintainability は常時、go / python / typescript / react / nextjs / php / laravel / shell は tech_stack で選択）
 │   │   └── agent-prompt-injection.md  # memory注入・ガードレール・昇格通知
+│   ├── scripts/
+│   │   └── ensure-worktree.sh      # STEP A worktree 作成と依存物・.env の準備
 │   └── prompts/                    # エージェントプロンプト（チーム別）
 │       ├── dev-infra.md            # Infra Dev（推論トレース・JSON通知）
 │       ├── dev-app.md              # App Dev（推論トレース・JSON通知）

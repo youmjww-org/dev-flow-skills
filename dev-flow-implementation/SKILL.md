@@ -315,6 +315,15 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 **implementer の不確実点:** 対応する implementer の完了 JSON の `uncertainty_points` を、レビュアーのプロンプト末尾に JSON のまま付ける。レビュアーは 1 件ずつ `resolved`（コード・仕様書から妥当と判断できる）/ `needs_human`（要件の解釈が要る）を最終回答の `uncertainty_verdicts` で返す。`needs_human` が 1 件でもあるときだけ AskUserQuestion で人間に確かめる。
 
+**グループの範囲で直せない指摘（人間に聞かない）:** レビュー指摘の扱いを人間に聞くのは、上の `needs_human` があるときだけ。次のものは決めた方針で処理して先へ進む（2026-10 の API sandbox の検証で、既存コードの規約違反と仕様の書き漏れを人間に聞いて implementation が止まった）。
+
+| 指摘の種類 | 処理 |
+|---|---|
+| このグループの差分に無い既存コードの問題（既存ファイルの規約違反など）。同じ書き方を新しいコードが真似ているだけのものも含む | 直さない。`review-findings-backlog.md` に「既存コード」と書いて記録し、承認扱いにする。新しいコードだけ規約に合わせられるなら、それは直す |
+| 規約そのものを変える話（規約を緩める・新しい規約を作る） | 直さない。backlog に記録し、compliance の報告で推奨とあわせて出す |
+| 仕様（テスト定義書）に無い振る舞いのテストが欲しい（設計凍結後の仕様の書き漏れ） | minor なら backlog に記録して進む。major なら Plan Repair（`blocker_type: "plan_repair_needed"`）に回す |
+| `spec_cache.md` などの内部資料が古い | その場で直す（人間に聞かない） |
+
 **レビュー結果の保存:** レビュアーの最終回答 JSON は受け取ったらすぐ `doc/process/reviews/group-{N}-{dev|qa}-{infra|app}-r{回数}.json` に Write する（メインの作業ディレクトリ。STEP H の集約は会話の記憶ではなくこのファイルから行う。セッションをまたいでも rule 名が残る）。
 
 #### Dev (Infra) レビュー（Infra / Cross グループ）

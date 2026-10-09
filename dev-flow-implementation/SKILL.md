@@ -271,7 +271,7 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
    - `next_stage` を `"test"` に
    - `base_branch` に `implementation_progress.base_branch` を写す（test が origin と同期するのに使う）
    - `implementation_progress` を削除
-   - **`mode == "incremental"` のときだけ**: 上書きする前の `baseline_commit` を `diff_base_commit` に写し（compliance が今回の差分を取るのに使う）、`baseline_commit` を `git rev-parse HEAD` で上書きする（詳細は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/state-schema.md`「baseline_commit のライフサイクル」）
+   - **`mode == "incremental"` のときだけ**: `diff_base_commit` が**まだ無ければ**、上書きする前の `baseline_commit` をそこに写し（compliance が今回の run の差分を取るのに使う。plan_repair の後の 2 回目の implementation では既にあるので触らない。上書きすると 1 回目の変更が差分から漏れる）、`baseline_commit` を `git rev-parse HEAD` で上書きする（詳細は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/state-schema.md`「baseline_commit のライフサイクル」）
 4. 人間に「implementation 完了。次は `/dev-flow` を実行して test（テスト実行）に進んでください」と伝える（2 の出力を添える）
 
 ---

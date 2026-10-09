@@ -106,7 +106,7 @@
 | consistency STEP 0 | `stage-consistency-agent`（Impact Analysis） | `git diff $baseline_commit...HEAD -- doc/` で要件差分を抽出。**書き換えない** |
 | implementation 開始時 | `stage-implementation-agent` | 実装範囲決定のために参照。**書き換えない** |
 | implementation 完了時 | `stage-implementation-agent` | 全グループの PR がマージされた後、`git rev-parse HEAD`（=ベースブランチの最新 HEAD）を `baseline_commit` に書き戻して state.json を保存 |
-| implementation 完了時（続き） | 同上 | 書き戻す前の値を `diff_base_commit` に写す |
+| implementation 完了時（続き） | 同上 | `diff_base_commit` が無いときだけ、書き戻す前の値を写す（plan_repair 後の 2 回目では上書きしない） |
 | test / compliance | `baseline_commit` は参照しない | compliance は `kind` が `change` / `fix` のとき `diff_base_commit` から今回の差分を取る |
 
 `full` モードでは `baseline_commit = null` 固定。すべてのアクターは null を見たら「全範囲対象」と解釈する。

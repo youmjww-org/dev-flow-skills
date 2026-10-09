@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer", "status", "findings", "checked_rules", "uncertainty_verdicts"],
+  "properties": {
+    "reviewer": {"type": "string"},
+    "status": {"type": "string", "enum": ["approved", "changes_requested"]},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "rule", "file", "line", "problem", "fix"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["blocker", "major", "minor", "info"]},
+          "rule": {"type": "string"},
+          "file": {"type": ["string", "null"]},
+          "line": {"type": ["integer", "null"]},
+          "problem": {"type": "string"},
+          "fix": {"type": "string"}
+        }
+      }
+    },
+    "checked_rules": {"type": "array", "items": {"type": "string"}},
+    "uncertainty_verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["point", "verdict", "reason"],
+        "properties": {
+          "point": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["resolved", "needs_human"]},
+          "reason": {"type": "string"}
+        }
+      }
+    }
+  }
+}

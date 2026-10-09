@@ -22,6 +22,7 @@
 | `"やりたいこと"` | 自由文 | `--` で始まらない部分がタスク説明（`state.json.task`） |
 | `--kind=` | `feature` / `change` / `fix` / `refactor` | 変更種別。通るステージが変わる（`--man kinds`）。省略時、実装コードがあれば起動時に選択肢が出る。実装コードが無ければ常に `feature` |
 | `--profile=` | `quality`（既定）/ `cost` | 実行プロファイル（`--man profiles`）。run の途中でも切り替えられる |
+| `--reviewer=` | `auto`（既定）/ `claude` | レビュアー（spec の reviewer・implementation の Dev / QA レビュー）を動かすもの。`auto` は codex にログイン済みなら Codex CLI、そうでなければ Claude。`state.json.reviewer_engine` に保存され、run の途中でも切り替えられる |
 | `--from=` | `requirements` / `spec` / `consistency` / `implementation` / `test` / `compliance` | そのステージから再開する。`requirements` 以外は state.json が必要。`plan_repair` は指定できない |
 | `--bootstrap` | — | 既存コードから as-is ドキュメントを逆生成する。ドキュメントの無い既存プロジェクトで最初に 1 回 |
 | `--dry-run` | — | 何も書き換えず、実行計画と下流スキルの有無だけ表示する |
@@ -48,7 +49,7 @@
 | 向いている場面 | 大きめの機能、正確さが大事な変更 | 小さな fix / refactor、試し打ち |
 | ステージの実行 | オーケストレーター（Opus）が各ステージの SKILL.md を全文読んで直接実行 | ステージごとに `stage-*-agent` を起動（spec / consistency / implementation / test は Haiku） |
 | writer・implementer | Opus。昇格なし | Sonnet から始め、設計レベルの指摘で Opus に昇格 |
-| レビュー | Opus。Dev と QA を同時に | Opus。Dev → QA の順 |
+| レビュー | codex が使えれば Codex CLI、使えなければ Opus。Dev と QA を同時に | codex が使えれば Codex CLI（Dev と QA を同時に）、使えなければ Opus で Dev → QA の順 |
 | test | Opus で最大 5 回 | Haiku 2 回 → Sonnet 3 回 |
 | ハング検知 | 起動 5 分で確認、生存確認 3 分で判定 | モデル別（haiku 5 分 / sonnet 15 分 / opus 30 分） |
 

@@ -27,3 +27,6 @@ jobs:
 
       - name: 規約ファイルの構造チェック
         run: python3 tests/check-conventions.py
+
+      - name: codex レビューのラッパーのテスト（codex はスタブ）
+        run: bash tests/codex/run.sh

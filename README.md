@@ -355,6 +355,15 @@ implementation 中にエージェントが「計画誤り」を検出した場�
 - **Dev レビュアー（懐疑的観点）**: セキュリティホール・新人可読性・アーキテクチャ
 - **QA レビュアー（素朴質問観点）**: 理解できない点・テストの意図が不明な点のみ指摘
 
+#### レビュアーは Codex で動かす
+
+レビュアー（spec の reviewer 4 種と implementation の Dev / QA レビュー）は、[Codex CLI](https://github.com/openai/codex) にログイン済みなら `codex exec` で動かし、そうでなければ Claude のサブエージェントで動かします（`--reviewer=claude` で常に Claude）。書き手（Claude）と系統の違うモデルに見させて見落としが重ならないようにするのと、Opus を往復ごとに起動していたレビューのトークンを減らすのが目的です。
+
+- `dev-flow/codex/review.sh` が、レビュアープロンプトに Codex 向けの読み替え（`codex/preamble-*.md`）を付け、出力を JSON スキーマ（`codex/schema-*.json`）で固定して起動します。spec の reviewer は read-only、implementation のレビューは worktree の中だけ書ける sandbox（テスト・lint を実行できる）で動きます
+- sandbox では `.git` に書けないので、ミューテーションの再現で壊したファイルは `cp` で戻させ、戻し忘れは `review.sh wait` が `git checkout` で戻して `restored_files` に記録します
+- 実装・writer・test runner は codex にしません。dev-flow の hook（テストの改変禁止・テストコードのリントなど）は Claude Code の Write / Edit にしか効かないためです
+- codex が失敗・タイムアウトしたら、そのレビューだけ Claude でやり直します。詳しくは `dev-flow/reference/codex-review.md`
+
 #### memory 注入
 
 過去のレビューで3回以上繰り返された指摘パターンや、人間によるマージ後修正を Claude memory に保存します。次回フロー実行時、エージェント起動前にそのパターンをプロンプトに注入することで、同じ指摘の再発を防ぎます。
@@ -375,7 +384,9 @@ dev-flow-skills/
 │   │   ├── cost-mode.md            # cost でのステージエージェント起動（対応表・起動テンプレート・Plan Repair）
 │   │   ├── hooks-and-merge.md      # hook 一覧・PR マージの分担・自動マージ条件
 │   │   ├── help.md / manual.md     # --help / --man の表示内容
+│   │   ├── codex-review.md         # レビュアーを Codex で動かす手順（エンジンの選び方・起動と待ち方・失敗時）
 │   │   └── state-schema.md ほか    # state.json スキーマ・ハング対策・エスカレーション・エラー対処
+│   ├── codex/                      # レビュアーを Codex CLI で動かすラッパー（review.sh・前置き・出力スキーマ）
 │   └── hooks/                      # 決定的検証（起動前チェック・状態同期・PR マージガード）
 ├── dev-flow-bootstrap/             # 0. bootstrap（既存プロジェクト導入・1 回だけ）
 │   ├── SKILL.md
@@ -435,11 +446,11 @@ dev-flow-skills/
 | ステージの実行者 | 全ステージ | オーケストレーターが直接実行 | `stage-*-agent`（requirements / compliance / bootstrap は Opus、他は Haiku） |
 | bootstrap | dev-flow-bootstrap | 子も Opus | 棚卸し・仕様書逆生成の子: Sonnet |
 | requirements | dev-flow-requirements | Opus | Opus |
-| spec | dev-flow-spec | 子（writer / reviewer）: Opus | 子: Sonnet |
+| spec | dev-flow-spec | writer: Opus / reviewer: Codex（使えなければ Opus） | writer: Sonnet / reviewer: Codex（使えなければ Sonnet） |
 | consistency STEP 0 Impact Analysis | dev-flow-consistency | Opus | Sonnet |
 | consistency | dev-flow-consistency | 子: Opus | 整合性チェック子: Opus / writer 子: Sonnet |
 | implementation 実装 | dev-flow-implementation | Opus（昇格なし） | Sonnet → Opus（自動昇格） |
-| implementation レビュー | dev-flow-implementation | Opus。Dev と QA を同時に | Opus。Dev → QA の直列 |
+| implementation レビュー | dev-flow-implementation | Codex（使えなければ Opus）。Dev と QA を同時に | Codex（Dev と QA を同時に。使えなければ Opus で Dev → QA の直列） |
 | test | dev-flow-test | Opus（最大 5 回） | Haiku → Sonnet（自動昇格） |
 | compliance | dev-flow-compliance | Opus | Opus |
 

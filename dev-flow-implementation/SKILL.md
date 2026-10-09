@@ -301,6 +301,8 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 下の各レビューの「同期実行、`run_in_background=false`」は cost の指定。quality では上のとおりバックグラウンドで並べる。
 
+**レビュアーのエンジン（codex 優先）:** このステージの最初のレビューの前に `state.json.reviewer_engine`（無ければ `auto`）を見る。`auto` なら `${CLAUDE_SKILL_DIR}/../dev-flow/codex/review.sh available` を 1 回実行し、0 なら以下の 4 種のレビューをすべて **Codex CLI で動かす**（`claude`、または `available` が 3 なら従来どおり Claude のサブエージェント）。起動・待ち方・失敗時に Claude へ切り替える手順は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/codex-review.md` を Read して従う（種別は `impl`、cwd はレビュー対象の worktree）。codex のときは下の「Agent を起動」を「`review.sh start` で起動」と読み替え、Dev と QA は cost でも並べて起動してよい。プロンプト・修正ループ・指摘の渡し方・`uncertainty_verdicts` の扱いは Claude のときと同じ。
+
 **レビュー指摘の渡し方（全レビュー共通）:**
 
 レビュアーの最終回答の `findings` は、**要約・言い換え・取捨選択をせずに JSON のまま**修正担当に渡す。オーケストレーターが「主な指摘は 3 点」とまとめると、残りの指摘が修正されないまま再レビューに回り、往復が増える（実戦で指摘の一部だけが転送され、人間に指摘された）。
@@ -324,7 +326,7 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 | 仕様（テスト定義書）に無い振る舞いのテストが欲しい（設計凍結後の仕様の書き漏れ） | minor なら backlog に記録して進む。major なら Plan Repair（`blocker_type: "plan_repair_needed"`）に回す |
 | `spec_cache.md` などの内部資料が古い | その場で直す（人間に聞かない） |
 
-**レビュー結果の保存:** レビュアーの最終回答 JSON は受け取ったらすぐ `doc/process/reviews/group-{N}-{dev|qa}-{infra|app}-r{回数}.json` に Write する（メインの作業ディレクトリ。STEP H の集約は会話の記憶ではなくこのファイルから行う。セッションをまたいでも rule 名が残る）。
+**レビュー結果の保存:** レビュアーの最終回答 JSON は受け取ったらすぐ `doc/process/reviews/group-{N}-{dev|qa}-{infra|app}-r{回数}.json` に Write する（codex のときは `review.sh wait` がここに書くので Write し直さない。メインの作業ディレクトリ。STEP H の集約は会話の記憶ではなくこのファイルから行う。セッションをまたいでも rule 名が残る）。
 
 #### Dev (Infra) レビュー（Infra / Cross グループ）
 

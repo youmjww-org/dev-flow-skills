@@ -34,6 +34,8 @@
 
 **`--from` 引数が不正:** 有効値（`requirements` / `spec` / `consistency` / `implementation` / `test` / `compliance`）を AskUserQuestion で提示
 
+**`--reviewer` 引数が不正:** 有効値（`auto` / `claude`）を AskUserQuestion で提示
+
 **`--from` 指定時に state.json なし:** AskUserQuestion でエラー報告
 
 **予期しないエラー:** エラーメッセージ・スタックトレース・関連パスを含めて人間に報告し、可能であれば復旧手順を提案

@@ -29,10 +29,11 @@ def main():
         (project / "doc/process/state.json").write_text(json.dumps({
             "kind": "change", "profile": "cost",
             "harness": {"stage_history": [
-                {"stage": "requirements", "started_at": "2026-10-09T09:00:00Z", "completed_at": "2026-10-09T09:05:00Z"},
+                {"stage": "requirements", "started_at": "2026-10-09T09:00:00Z", "completed_at": "2026-10-09T09:05:00Z", "outcome": "人間待ち"},
                 # 09:05〜09:15 は人間待ち
                 {"stage": "requirements", "started_at": "2026-10-09T09:15:00Z", "completed_at": "2026-10-09T09:16:00Z"},
-                {"stage": "implementation", "started_at": "2026-10-09T09:16:10Z", "completed_at": "2026-10-09T09:36:10Z"},
+                # 人間待ちでない実行の後の空きは数えない
+                {"stage": "implementation", "started_at": "2026-10-09T09:17:10Z", "completed_at": "2026-10-09T09:36:10Z"},
             ]},
         }))
         reviews = project / "doc/process/reviews"
@@ -73,7 +74,7 @@ def main():
 
     s = r["summary"]
     check("wall", s["wall_minutes"], 36.2)
-    check("agent", s["agent_minutes"], 26.0)
+    check("agent", s["agent_minutes"], 25.0)
     check("human wait", s["human_wait_minutes"], 10.0)
     check("human stops", s["human_stops"], 1)
     check("subagents", s["subagents"], 4)

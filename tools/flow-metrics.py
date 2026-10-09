@@ -123,11 +123,12 @@ def stage_summary(history):
         started, completed = parse_ts(h.get("started_at")), parse_ts(h.get("completed_at"))
         if started and completed:
             s["seconds"] += (completed - started).total_seconds()
-        # 次のステージ実行までの空きを人間待ちとみなす（AskUserQuestion で同じターン内に答えた分は含まない）
-        if completed and i + 1 < len(history):
+        # outcome が「人間待ち」のステージ実行で止まったとみなし、次の実行までの空きを待ち時間にする
+        # （空きの長さだけで判定すると、すぐ答えたときに数えられない。AskUserQuestion で同じターン内に答えた分は含まない）
+        if completed and i + 1 < len(history) and "人間待ち" in (h.get("outcome") or ""):
             nxt = parse_ts(history[i + 1].get("started_at"))
-            if nxt and (nxt - completed).total_seconds() > 30:
-                human_waits.append({"after": h["stage"], "seconds": (nxt - completed).total_seconds()})
+            if nxt:
+                human_waits.append({"after": h["stage"], "seconds": max(0, (nxt - completed).total_seconds())})
     return stages, human_waits
 
 

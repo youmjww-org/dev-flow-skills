@@ -33,6 +33,15 @@ CMD="$(printf '%s\n' "$CMD_RAW" | awk '
     }
     print line
   }')"
+# 引用符の中の "gh pr merge"（grep のパターン・echo のメッセージ等）もデータなので外す
+# （コミットメッセージのように複数行にわたる引用もあるので、行単位の sed ではなく全体で処理する）
+CMD="$(printf '%s' "$CMD" | python3 -c '
+import re, sys
+s = sys.stdin.read()
+pat = re.compile(r"gh\s+pr\s+merge")
+s = re.sub(r"\x27[^\x27]*\x27|\"(?:[^\"\\]|\\.)*\"", lambda m: "" if pat.search(m.group(0)) else m.group(0), s)
+sys.stdout.write(s)
+')"
 printf '%s' "$CMD" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge' || exit 0
 
 PATTERNS="$(dirname "$0")/db-destructive-patterns.txt"
@@ -149,6 +158,35 @@ fi
 # テストファイルに限らず全 diff を見る（テストヘルパーやテーブルの行削除も拾いたい）。
 # 削除行の検出は「同じ行も同じ TC-ID のテスト定義も追加行に無い」ものだけ（移動・名前の変更は許容）。
 REMOVED="$(printf '%s\n' "$DIFF" | grep -E '^-[^-]' || true)"
+# その場での書き換え: 連続した変更行のかたまり（-/+ の行が続く範囲）で、テスト定義の追加数が削除数以上なら、
+# そのかたまりで消えたテスト定義は置き換えとみなす（2026-10 の change の検証で、仕様変更に合わせて
+# 「10 件ちょうどは有効」を「20 件ちょうどは有効」に書き換えた TC-ID の無いテストで止まった）。
+# 削除だけのかたまり（テストを消して CI を通す）はこれまでどおり止める。TC-ID を持つテストはこの判定に使わない。
+REWRITTEN="$(printf '%s\n' "$DIFF" | TEST_PATTERNS="$TEST_PATTERNS" python3 -c '
+import os, re, sys
+pats = []
+for line in open(os.environ["TEST_PATTERNS"], encoding="utf-8"):
+    if line.startswith("[removed] "):
+        p = line[len("[removed] "):].rstrip("\n")
+        pats.append(re.compile(p[2:] if p.startswith("^-") else p))
+def is_def(body):
+    return any(p.match(body) for p in pats)
+block = []
+def flush():
+    rem = [l for l in block if l.startswith("-") and is_def(l[1:])]
+    add = [l for l in block if l.startswith("+") and is_def(l[1:])]
+    if rem and len(add) >= len(rem):
+        for l in rem:
+            # TC-ID を持つテストは TC-ID の照合（下）だけで判定する（別の TC への置き換えを許さない）
+            if not re.search(r"tc[-_]?[0-9]+", l, re.I):
+                print(l)
+for line in sys.stdin.read().split("\n"):
+    if (line.startswith("-") and not line.startswith("---")) or (line.startswith("+") and not line.startswith("+++")):
+        block.append(line)
+    else:
+        flush(); block = []
+flush()
+' 2>/dev/null || true)"
 TEST_HITS=""
 while IFS= read -r line; do
   case "$line" in ''|'#'*) continue ;; esac
@@ -160,6 +198,7 @@ while IFS= read -r line; do
       # 削除行と同じ内容（先頭の - を + に変えたもの）が追加行にあれば移動とみなす
       body="${hit#-}"
       printf '%s\n' "$ADDED" | grep -qxF -- "+$body" && continue
+      printf '%s\n' "$REWRITTEN" | grep -qxF -- "$hit" && continue
       # 同じ TC-ID（tc043 / TC-043 / TC_043）を持つテスト定義が追加行にあれば名前の変更とみなす
       # （2026-10 の change の検証で、期待値が変わった TC のメソッド名を変えただけで止まった）
       tc="$(printf '%s' "$hit" | grep -oiE 'tc[-_]?[0-9]+' | head -1 | tr 'A-Z' 'a-z' | tr -d '_-')"

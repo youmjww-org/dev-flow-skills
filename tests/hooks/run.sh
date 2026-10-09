@@ -528,6 +528,15 @@ EOF
 echo done")")"
 assert_empty "heredoc 本文に含まれる gh pr merge は素通り（誤検知しない）" "$out"
 
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json "grep -n \"merge-ops\\|$M\\|pr checks\" run.summary; echo '$M は使わない'")")"
+assert_empty "引用符の中の gh pr merge（grep のパターン等）は素通り" "$out"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json "git commit -qm \"直す
+
+- $M の 1 行目
+- $M の 2 行目\" && git push")")"
+assert_empty "複数行のコミットメッセージの中の gh pr merge は素通り" "$out"
+
 out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json "python3 - <<EOF
 print('$M は禁止')
 EOF
@@ -620,6 +629,12 @@ assert_eq "同じ TC-ID のテストの名前変更は allow" "$(decision "$out"
 out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 119 --merge')")"
 assert_eq "TC-ID が違うテストへの置き換えは deny" "$(decision "$out")" "deny"
 assert_contains "消えた TC のテストを提示" "$(reason "$out")" "test_tc043"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 123 --merge')")"
+assert_eq "TC-ID の無いテストのその場での書き換え（追加数 >= 削除数）は allow" "$(decision "$out")" "allow"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 124 --merge')")"
+assert_eq "テスト定義を 2 件消して 1 件足すかたまりは deny" "$(decision "$out")" "deny"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------

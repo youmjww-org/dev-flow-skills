@@ -1,0 +1,9 @@
++++ b/tests/unit/validate.test.ts
+@@ -52,16 +52,10 @@ describe("isValidTags", () => {
+-  it("11 件は無効", () => {
+-    expect(isValidTags(tags(11))).toBe(false);
+-  });
+-  it("大文字を含むタグは無効", () => {
+-    expect(isValidTags(["Abc"])).toBe(false);
++  it("1 件は有効", () => {
++    expect(isValidTags(tags(1))).toBe(true);

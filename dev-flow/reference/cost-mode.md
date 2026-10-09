@@ -63,7 +63,7 @@ hook の `pre-agent-check.sh` が起動前に、プランモード・下流ス�
 | # | アクター | 動作 |
 |---|---|---|
 | 1 | `stage-implementation-agent` | グループから `status: "blocked"` / `blocker_type: "plan_repair_needed"` を受け取る |
-| 2 | `stage-implementation-agent` | AskUserQuestion で「承認 / 却下 / 全体再生成」を出す。承認なら `next_stage` を `"plan_repair"` にして終了 |
+| 2 | `stage-implementation-agent` | 要件・仕様の解釈が変わらない修正なら人間に聞かずに承認扱い、変わるものだけ「承認 / 却下 / 全体再生成」を人間に出す（`plan-repair.md`）。承認なら `next_stage` を `"plan_repair"` にして終了 |
 | 3 | オーケストレーター | `next_stage = "plan_repair"` を見て `stage-plan-repair-agent`（consistency の mini モード）を起動 |
 | 4 | `stage-plan-repair-agent` | 未着手グループのチェックリストだけ作り直し、`next_stage` を `"implementation"` に戻して終了 |
 | 5 | オーケストレーター | implementation を未着手グループから再開 |

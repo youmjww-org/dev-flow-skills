@@ -85,6 +85,9 @@ git branch --show-current
 
 現在のブランチ名を BASE_BRANCH として記録します。
 
+- `main` / `master` / `develop` / `release/*` / `hotfix/*` の上にいたら、そこへ PR を出すと自動マージが常に拒否されるので、`git switch -c feature/{task を表す英小文字とハイフンの短い名前}` で作業用ブランチを作り、それを BASE_BRANCH にする（それまでのドキュメントのコミットはそのまま引き継がれる。元のブランチは触らない）
+- BASE_BRANCH を `git push -u origin {BASE_BRANCH}` で push してから worktree を作る。push していないと、PR の差分に requirements〜consistency のドキュメントのコミットまで入り、Dev / QA の PR の範囲がずれる（2026-10 の change の検証で起きた）
+
 その後 state.json に `implementation_progress` を初期化して書き込みます：
 
 ```json

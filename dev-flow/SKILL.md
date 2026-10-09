@@ -226,7 +226,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
    | 終わったステージ | 次 |
    |---|---|
    | bootstrap | 生成した as-is ドキュメントの確認を頼み、確認後に `/dev-flow --kind=...` で本来の変更を始めるよう案内して終える |
-   | requirements | 「要件定義完了。確認後 `/dev-flow` を実行してください。」で終える |
+   | requirements | 要件定義書の確認がまだなら「要件定義完了。確認後 `/dev-flow` を実行してください。」で終える。この起動で人間が要件定義書を承認していて、requirements はその反映だけで終わったなら、止まらずに STEP 2 へ戻って spec を続ける（承認の後にもう一度 `/dev-flow` を打たせない） |
    | spec 以降 | STEP 2 に戻り、compliance まで続けて実行する（`fix` / `refactor` は最初のステージから同じ） |
 
 ## エスカレーションとエラー

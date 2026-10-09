@@ -613,6 +613,13 @@ assert_eq "テスト関数の移動（削除+同内容の追加）は allow" "$(
 out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 112 --merge')")"
 assert_eq "pytest.mark.skip / it.skip は deny" "$(decision "$out")" "deny"
 assert_contains "複数言語のヒットを提示" "$(reason "$out")" "it.skip"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 118 --merge')")"
+assert_eq "同じ TC-ID のテストの名前変更は allow" "$(decision "$out")" "allow"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 119 --merge')")"
+assert_eq "TC-ID が違うテストへの置き換えは deny" "$(decision "$out")" "deny"
+assert_contains "消えた TC のテストを提示" "$(reason "$out")" "test_tc043"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------

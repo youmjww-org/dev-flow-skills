@@ -147,7 +147,7 @@ fi
 
 # ---- テストの削除・スキップ ----
 # テストファイルに限らず全 diff を見る（テストヘルパーやテーブルの行削除も拾いたい）。
-# 削除行の検出は「同じ名前が追加行に存在しない」ものだけ（リネーム・移動は許容）。
+# 削除行の検出は「同じ行も同じ TC-ID のテスト定義も追加行に無い」ものだけ（移動・名前の変更は許容）。
 REMOVED="$(printf '%s\n' "$DIFF" | grep -E '^-[^-]' || true)"
 TEST_HITS=""
 while IFS= read -r line; do
@@ -159,10 +159,15 @@ while IFS= read -r line; do
       [ -n "$hit" ] || continue
       # 削除行と同じ内容（先頭の - を + に変えたもの）が追加行にあれば移動とみなす
       body="${hit#-}"
-      if ! printf '%s\n' "$ADDED" | grep -qxF -- "+$body"; then
-        TEST_HITS="${TEST_HITS}${hit}
-"
+      printf '%s\n' "$ADDED" | grep -qxF -- "+$body" && continue
+      # 同じ TC-ID（tc043 / TC-043 / TC_043）を持つテスト定義が追加行にあれば名前の変更とみなす
+      # （2026-10 の change の検証で、期待値が変わった TC のメソッド名を変えただけで止まった）
+      tc="$(printf '%s' "$hit" | grep -oiE 'tc[-_]?[0-9]+' | head -1 | tr 'A-Z' 'a-z' | tr -d '_-')"
+      if [ -n "$tc" ] && printf '%s\n' "$ADDED" | grep -E -- "^\+${pat#^-}" | tr 'A-Z' 'a-z' | tr -d '_-' | grep -qE "${tc}([^0-9]|$)"; then
+        continue
       fi
+      TEST_HITS="${TEST_HITS}${hit}
+"
     done <<< "$(printf '%s\n' "$REMOVED" | grep -E -- "$pat" || true)"
   else
     h="$(printf '%s\n' "$ADDED" | grep -E -- "$pat" || true)"

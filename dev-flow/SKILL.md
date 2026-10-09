@@ -78,7 +78,7 @@ hook（`${CLAUDE_SKILL_DIR}/hooks/`、`setup.sh` が登録）が state.json・�
 
 - `deny` / `ask` されたら理由を人間に伝え、勝手に回避策を取らない。差し戻し（exit 2）は指摘どおり直して書き直す
 - `pre-agent-check.sh` / `agent-complete.sh` は `stage-*-agent` の起動時だけ動く。quality ではその確認（ループ検出・`stage_history` の記録）を STEP 4 で自分で行う
-- PR のマージは**待たない**（`sleep` でポーリングしない）。マージ待ちになったら終えて、次の `/dev-flow` で続ける。`gh pr merge` が deny されたら同じコマンドを再試行せず、hooks-and-merge.md の手順に従う
+- **人間による** PR のマージは待たない（`sleep` でポーリングしない）。人間マージ待ちになったら終えて、次の `/dev-flow` で続ける。CI の完了は待つ: `gh pr merge` が CI 未完了で deny されたら、`timeout 900 gh pr checks <N> --watch --fail-fast` で完了を待ってから 1 回だけ再試行する（`sleep` のポーリングではない。待たずに止まると、グループごとに人間の再開が要る）。`gh pr merge` が deny されたら同じコマンドを再試行せず、hooks-and-merge.md の手順に従う
 - 「起動時コンテキスト › hooks の登録状況」が disabled なら `gh pr merge` を発行しない
 
 ## 状況報告のルール

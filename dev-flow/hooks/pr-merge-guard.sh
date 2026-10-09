@@ -33,6 +33,15 @@ CMD="$(printf '%s\n' "$CMD_RAW" | awk '
     }
     print line
   }')"
+# 引用符の中の "gh pr merge"（grep のパターン・echo のメッセージ等）もデータなので外す
+# （コミットメッセージのように複数行にわたる引用もあるので、行単位の sed ではなく全体で処理する）
+CMD="$(printf '%s' "$CMD" | python3 -c '
+import re, sys
+s = sys.stdin.read()
+pat = re.compile(r"gh\s+pr\s+merge")
+s = re.sub(r"\x27[^\x27]*\x27|\"(?:[^\"\\]|\\.)*\"", lambda m: "" if pat.search(m.group(0)) else m.group(0), s)
+sys.stdout.write(s)
+')"
 printf '%s' "$CMD" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge' || exit 0
 
 PATTERNS="$(dirname "$0")/db-destructive-patterns.txt"

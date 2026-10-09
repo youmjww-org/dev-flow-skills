@@ -429,7 +429,7 @@ git worktree remove {MAIN_DIR}/../worktree-qa-app-group-N --force
 
 **自動マージ試行（非ブロッキング）:**
 
-マージを**待たない**。まず hook の有無を確認する：
+**人間による**マージは待たない。CI の完了は待つ: `gh pr merge` が CI 未完了で deny されたら、`timeout 900 gh pr checks <N> --watch --fail-fast` で完了を待ってから 1 回だけ再試行する（`sleep` のポーリングではない。待たずに止まると、グループごとに人間の再開が要る）。まず hook の有無を確認する：
 
 ```bash
 jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/settings.json >/dev/null 2>&1 && echo enabled || echo disabled

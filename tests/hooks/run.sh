@@ -528,6 +528,15 @@ EOF
 echo done")")"
 assert_empty "heredoc 本文に含まれる gh pr merge は素通り（誤検知しない）" "$out"
 
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json "grep -n \"merge-ops\\|$M\\|pr checks\" run.summary; echo '$M は使わない'")")"
+assert_empty "引用符の中の gh pr merge（grep のパターン等）は素通り" "$out"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json "git commit -qm \"直す
+
+- $M の 1 行目
+- $M の 2 行目\" && git push")")"
+assert_empty "複数行のコミットメッセージの中の gh pr merge は素通り" "$out"
+
 out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json "python3 - <<EOF
 print('$M は禁止')
 EOF

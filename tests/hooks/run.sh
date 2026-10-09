@@ -809,6 +809,31 @@ assert_eq "  2 回目は足さない" "$(grep -c . "$dir/doc/process/.gitignore"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------
+# dev-wait-guard.sh
+# ---------------------------------------------------------------------------
+section "dev-wait-guard.sh"
+dir="$(new_project)"
+write_state "$dir" implementation
+for c in 'until git cat-file -e dev/app-group-2:src/routes.ts 2>/dev/null; do sleep 15; done' \
+         'while ! git -C ../worktree-dev-app-group-2 log --oneline | grep -q feat; do sleep 30; done' \
+         'sleep 600 && git fetch origin dev/infra-group-1'; do
+  out="$(run_hook dev-wait-guard.sh "$dir" "$(bash_json "$c")")"
+  assert_eq "Dev を待つコマンドは deny: ${c:0:50}" "$(decision "$out")" "deny"
+done
+for c in 'git log --oneline dev/app-group-2' \
+         'cd ../worktree-qa-app-group-2 && git merge --no-ff dev/app-group-2' \
+         "git branch --list 'dev/app-group-*' | while read b; do git branch -D \"\$b\"; done" \
+         'timeout 900 gh pr checks 12 --watch --fail-fast' \
+         'sleep 5'; do
+  out="$(run_hook dev-wait-guard.sh "$dir" "$(bash_json "$c")")"
+  assert_empty "待ちでない・Dev を参照しないものは素通り: ${c:0:50}" "$out"
+done
+write_state "$dir" test
+out="$(run_hook dev-wait-guard.sh "$dir" "$(bash_json 'until git cat-file -e dev/app-group-2:x; do sleep 15; done')")"
+assert_empty "implementation 以外では何もしない" "$out"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
 # doc-validate: _ で始まる補助ファイル
 # ---------------------------------------------------------------------------
 section "doc-validate: 補助ファイル（_glossary.md 等）"

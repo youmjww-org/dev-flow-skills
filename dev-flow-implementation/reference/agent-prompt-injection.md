@@ -12,7 +12,17 @@
 
 ## 言語・フレームワーク規約の注入
 
-`state.json.tech_stack.language` / `.framework` から `dev-flow-implementation/SKILL.md` STEP B「言語・フレームワーク規約」の表でファイルを決め、Read して各プレースホルダーに入れる：
+`reference/conventions/` のファイルを次の表の順に**すべて** Read し、各プレースホルダーに入れる。後のものが前のものを上書き・補足する：
+
+| 順 | ファイル | 選び方 |
+|---|---|---|
+| 0 | `{project}/doc/process/conventions_verified.md` | **最優先**。無い、または `verified_for` が `tech_stack.language_version` / `framework_version` と違えば、先に [conventions/version-check.md](conventions/version-check.md) の手順で `conventions-verifier`（quality: `opus` / cost: `sonnet`、WebFetch 使用）を実行して作る。バージョンが未検出ならマニフェストから検出して `tech_stack` に書き戻す。WebFetch が使えなければ「未検証」と明記して先へ進む |
+| 1 | `testing.md` / `maintainability.md` | 常に |
+| 1' | `<language>.md` | `tech_stack.language` から: Go → `go.md`、TypeScript → `typescript.md`、PHP → `php.md`、Python → `python.md`、Shell / Bash → `shell.md`。Infra グループで差分に `*.sh` / `*.bats` が出る見込みなら language に関係なく `shell.md` も |
+| 2 | `<framework>.md` | `tech_stack.framework` から: Next.js → `nextjs.md`（`react.md` も先に）、Laravel → `laravel.md`、React → `react.md`。無ければ飛ばす |
+| 3 | `{project}/doc/conventions.md` | あれば。言語・フレームワーク規約と矛盾したらこちらが優先 |
+
+名前の大文字小文字・`.js` の有無・`Golang` / `Go` の揺れは無視して一致させる。対応ファイルが無い言語は `_template.md` の観点だけで進め、最終報告で「規約ファイル未整備: {language}」と伝える。プロジェクトの `CLAUDE.md` はサブエージェントが自動で読むので注入しない。
 
 | プレースホルダー | 入れるもの | 渡す相手 |
 |---|---|---|
@@ -56,7 +66,7 @@ reviewer の findings で同じ `rule` が 3 回以上出た場合は下記「me
 | Docker の実行ユーザー | `docker info --format '{{.SecurityOptions}}'`、`id -u` | rootless か。`--user` の要否 |
 | ホームの権限 | `find ~ -maxdepth 2 -user root 2>/dev/null` | root 所有のファイルが既に残っていないか（あれば人間に報告） |
 
-これが無いと、オーケストレーターが毎回すべてのエージェントのプロンプトに同じ注意を手書きすることになり、書き漏らしたエージェントがハング・失敗する（実例: nvm 未指定で Vite が動かない、`timeout` 無しで `composer create-project` が固まる）。
+これが無いと、オーケストレーターが毎回すべてのエージェントのプロンプトに同じ注意を手書きすることになり、書き漏らしたエージェントがハング・失敗する。
 
 ## memory フィードバックの注入
 

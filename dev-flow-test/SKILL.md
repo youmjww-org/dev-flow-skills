@@ -24,7 +24,7 @@ E2E テストあり: `{IS_E2E}`
 
 ## STEP 0.5: テスト対象を origin の最新に揃える（必須）
 
-テストはローカルのチェックアウトに対して走る。implementation の PR は GitHub 上でマージされるので、ローカルのベースブランチを pull していないと**古いコードをテストして「全件パス」になる**（実戦で origin より 44 コミット遅れたブランチで全件パスと報告し、compliance で実装バグが 2 件見つかった）。
+テストはローカルのチェックアウトに対して走る。implementation の PR は GitHub 上でマージされるので、ローカルのベースブランチを pull していないと**古いコードをテストして「全件パス」になる**。
 
 ```bash
 BASE="$(jq -r '.base_branch // empty' doc/process/state.json)"   # 無ければ現在のブランチ

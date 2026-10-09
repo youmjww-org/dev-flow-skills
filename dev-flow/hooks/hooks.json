@@ -38,6 +38,12 @@
             "command": "$HOME/.claude/skills/dev-flow/hooks/state-write-guard.sh",
             "timeout": 10,
             "statusMessage": "dev-flow state.json 書き込みガード"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/skills/dev-flow/hooks/dev-wait-guard.sh",
+            "timeout": 10,
+            "statusMessage": "dev-flow Dev 待ちガード"
           }
         ]
       },

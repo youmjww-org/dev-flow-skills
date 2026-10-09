@@ -33,9 +33,24 @@ printf '%s' "$CMD" | grep -qE ">>?[[:space:]]*[\"']?${T}" && hit="リダイレ�
 [ -z "$hit" ] && printf '%s' "$CMD" | grep -qE "(^|[;&|[:space:]])(mv|cp|install)[[:space:]]${T}[\"']?[[:space:]]*($|[;&|)])" && hit="mv / cp"
 [ -z "$hit" ] && printf '%s' "$CMD" | grep -qE "(^|[;&|[:space:]])(tee|sponge)[[:space:]]${T}" && hit="tee"
 [ -z "$hit" ] && printf '%s' "$CMD" | grep -qE "(^|[;&|[:space:]])sed[[:space:]]+(-[a-zA-Z]*i|--in-place)${T}" && hit="sed -i"
-if [ -z "$hit" ] && printf '%s' "$CMD_RAW" | grep -qE "(python3?|node|ruby|perl)" \
-   && printf '%s' "$CMD_RAW" | grep -qE "state\.json[\"']?[[:space:]]*,[[:space:]]*[\"'][wa]"; then
-  hit="スクリプトからの書き込み"
+# スクリプトは、パスを変数に入れてから open(p, "w") する書き方もある（2026-10 の change の検証で
+# stage-requirements-agent が p='doc/process/state.json' → open(p,'w') で書いた）。state.json を含む
+# スクリプトに書き込み操作があれば止める。見るのはインタプリタに渡すスクリプトの本文
+# （python3 - <<EOF の heredoc と -c / -e の引数）だけ。コミットメッセージ等に同じ文字列があっても止めない。
+WRITE_OPS="open\([^)]*,[[:space:]]*[\"'][wa]|\.write_text\(|json\.dump\(|writeFileSync|writeFile\(|File\.write"
+if [ -z "$hit" ]; then
+  SCRIPTS="$(printf '%s' "$CMD_RAW" | python3 -c '
+import re, sys
+s = sys.stdin.read()
+interp = r"(?:^|[\s;&|(])(?:python3?|node|ruby|perl)\b"
+for m in re.finditer(interp + r"[^\n]*?<<-?\s*[\"\x27]?(\w+)[\"\x27]?[^\n]*\n(.*?)\n[ \t]*\1[ \t]*(?:\n|$)", s, re.S):
+    print(m.group(2))
+for m in re.finditer(interp + r"(?:\s+-\w+)*\s+-[ce]\s+(\x27[^\x27]*\x27|\"(?:[^\"\\]|\\.)*\")", s):
+    print(m.group(1))
+' 2>/dev/null)"
+  if printf '%s' "$SCRIPTS" | grep -q 'state\.json' && printf '%s' "$SCRIPTS" | grep -qE "$WRITE_OPS"; then
+    hit="スクリプトからの書き込み"
+  fi
 fi
 [ -n "$hit" ] || exit 0
 

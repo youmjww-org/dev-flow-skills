@@ -49,6 +49,7 @@ hooks: {enabled / disabled}
 - `name` は hook（`pre-agent-check.sh` / `agent-complete.sh`）がエージェントを見分けるのに使うので、`subagent_type` と同じ値を必ず渡す
 - `model` は渡さない（定義の `model` を使う。Agent ツールの `model` を渡すと定義より優先される）
 - ステージエージェントは子エージェントを `run_in_background=false` で起動するよう定義に書いてある（バックグラウンドで起動すると、子の完了前に最終回答が返ってステージが途中で終わる。2026-10 の通し検証で spec と implementation で起きた）。それでも途中で戻ってきたら（`next_stage` が進んでおらず、人間への質問も無い）、`SendMessage` で子の結果を渡して続けさせる
+- ステージエージェントは AskUserQuestion を使えない。最終回答の先頭に「## 人間への質問」があれば、オーケストレーターがその質問を AskUserQuestion で人間に出し（選択肢と推奨はそのまま使う）、回答をプロンプトの末尾に「人間の回答:」として入れて同じステージエージェントを起動し直す。requirements の人間確認ゲート（要件定義書の承認）と spec のレビューも同じで、ステージエージェントは確認してほしい点を返して終わり、オーケストレーターが人間に聞く（2026-10 の change の通し検証で、stage-requirements-agent が質問できずに 6 件を暫定で決めていた）
 - 定義が見つからない（`subagent_type` が使えない）ときは、`setup.sh` の再実行と Claude Code の再起動を案内する。それまでの間は `subagent_type: "general-purpose"`・`model` に対応表のモデルを指定し、`agents/stage-*-agent.md` の本文をそのままプロンプトの先頭に付けて起動する
 
 hook の `pre-agent-check.sh` が起動前に、プランモード・下流スキルの欠損・state.json 不正・階層深さ（`agent_hierarchy.current_depth >= 4`）・ステージとエージェントの不一致・同じステージ 5 回以上を検証する。`deny` / `ask` されたら理由を人間に伝え、回避策を取らない。hook 未導入環境では同じ確認を自分で行う（階層深さは起動時に `+1`、完了時に `-1`）。

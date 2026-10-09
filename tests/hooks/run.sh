@@ -748,7 +748,14 @@ for c in 'jq ".next_stage=\"test\"" doc/process/state.json > /tmp/s.json && mv /
          'jq . x.json | tee doc/process/state.json' \
          "sed -i 's/a/b/' doc/process/state.json" \
          'cp /tmp/s.json doc/process/state.json' \
-         "python3 -c 'import json; json.dump({}, open(\"doc/process/state.json\", \"w\"))'"; do
+         "python3 -c 'import json; json.dump({}, open(\"doc/process/state.json\", \"w\"))'" \
+         "python3 - <<'EOF'
+import json
+p='doc/process/state.json'
+d=json.load(open(p,encoding='utf-8'))
+d['next_stage']='spec'
+open(p,'w',encoding='utf-8').write(json.dumps(d))
+EOF"; do
   out="$(run_hook state-write-guard.sh "$dir" "$(bash_json "$c")")"
   assert_eq "書き込みは deny: ${c:0:50}" "$(decision "$out")" "deny"
 done
@@ -759,7 +766,9 @@ for c in 'jq -r .next_stage doc/process/state.json' \
          "git commit -F - <<'EOF'
 state.json を jq > state.json で書いていたのを直す
 EOF" \
-         'bash ~/.claude/skills/dev-flow/hooks/mark-group-done.sh 1 12 13'; do
+         'bash ~/.claude/skills/dev-flow/hooks/mark-group-done.sh 1 12 13' \
+         "python3 -c 'import json; print(json.load(open(\"doc/process/state.json\"))[\"next_stage\"])'" \
+         "python3 tests/check.py && git commit -qm \"state.json を p='doc/process/state.json' → open(p,'w') で書くのを止める\""; do
   out="$(run_hook state-write-guard.sh "$dir" "$(bash_json "$c")")"
   assert_empty "読むだけ・対象外は素通り: ${c:0:50}" "$out"
 done

@@ -14,6 +14,8 @@ QA ブランチ単体には Dev の実装が含まれないため、**QA PR の 
    （ローカルで `git merge` して push でもよいが、worktree は STEP F で削除済みなので API 経由が手軽）
 3. QA PR の CI が通過してから QA PR をマージする
 
+QA が part に分かれているグループ（`qa/{team}-group-N-pK`）は、QA PR が part の数だけある。Dev PR のマージ後に全 part の PR へ `update-branch` をまとめて掛け、CI が通ったものから 1 本ずつマージする（part 同士は担当ファイルが別なので、順番は問わない）。
+
 QA PR の CI 失敗を「実装の不備」と誤解して調査に時間を使わないこと。
 
 **`mergeable=UNKNOWN` で deny された場合:** 直前に別の PR をマージした直後は GitHub 側がマージ可否を再計算中で、数秒〜十数秒 `UNKNOWN` になる。`gh pr view <N> --json mergeable,mergeStateStatus` で `MERGEABLE` / `CLEAN` になるのを確認してから再試行する（`sleep` ではなく確認コマンドで待つ）。実際にコンフリクトしている場合は `CONFLICTING` になるので区別できる。

@@ -47,7 +47,7 @@ find {MAIN_DIR} -type f \( -name "*.tf" -o -name "*.py" -o -name "*.ts" -o -name
 {CONVENTIONS}
 - テスト定義書を参照し、テストから呼び出しやすいインターフェース設計にする
 - **自分が書いた関数・クラス・コンポーネントのユニットテストを書く**（規約 `testing.md` の「Dev と QA のテスト分担」「書き方（Dev implementer 向け）」に従う）。置き場は実装と対（Laravel: `tests/Unit/**`、React: `src/**/X.test.tsx`、Go: `x_test.go`）。分岐（`if` / `switch` / 早期 return / `catch` / 三項演算子）ごとに 1 ケース、境界値を含める。出力の**形式**（日時フォーマット・レスポンスのラップ）も検証する
-- **ミューテーション確認**: 書いた・変えたテストごとに、そのテストが検出するはずの壊し方で実装を 1 か所壊してテストが落ちることを確かめ、元に戻す（規約 `testing.md`「ミューテーション確認」。壊した状態はコミットしない）。落ちなかったらテストを強化する。結果を完了 JSON の `result.mutation` に書く
+- **ミューテーション確認**: 追加・変更した分岐のうち、壊れたら困るもの（認可・入力検証・境界値・エラー処理を優先）を**最大 5 件**選び、1 件ずつ実装を 1 か所壊して**そのテストだけ**を実行し、落ちることを確かめて元に戻す（規約 `testing.md`「ミューテーション確認」。壊した状態はコミットしない）。全部で 5 分程度に収める。落ちなかったらテストを強化する。結果を完了 JSON の `result.mutation` に書く
 - **テスト定義書の TC-ID に対応する仕様テスト（Feature / App 結合 / E2E。`tests/Feature/**` `src/App.test.tsx` `e2e/**` 等）は書かない**。それは QA implementer が別 worktree で並行して書いている。Dev 側でも書くと同じパスのファイルが両ブランチに生まれてマージ時にコンフリクトする（実例: Dev/QA 双方が `tests/Feature/TaskApiTest.php` を作成）。エンドポイント全体の動作確認が必要なら `php artisan tinker` / `curl` / コミットしない一時スクリプトで行う
 - 追加した分岐のうち「これは仕様レベルの TC としてテスト定義書にあるべき」と思うものがあれば、完了 JSON の `uncertainty_points` に「TC 不足: {関数}: {分岐条件}」として申告する（QA が TC を追加する）。ユニットテストで自分がカバーしていれば申告不要
 
@@ -75,7 +75,8 @@ find {MAIN_DIR} -type f \( -name "*.tf" -o -name "*.py" -o -name "*.ts" -o -name
 - `{TECH_STACK.linter}` / `{TECH_STACK.formatter}` を実行してエラーをすべて解消する。空なら下の標準コマンドを使う：
 {STANDARD_COMMANDS}
 - 最後に実行したコマンドと終了コードを完了 JSON の `result.lint` に必ず書く（0 以外だとレビューに進めない）
-- 自分が書いたユニットテストを実行して全パスを確認し、規約の「標準コマンド（分岐カバレッジ）」で**変更した関数**の分岐カバレッジを計測する。閾値（`doc/conventions.md` の `coverage_threshold`、既定 0.80）未満の関数を `result.coverage.changed_functions_below_threshold` に列挙する（空でないとレビューに進めない。テストを減らして数字を上げる方向は禁止）
+- **作業中のテスト実行は、変更したファイルに関係するテストだけ**にする（ファイル指定・名前で絞る。例: `pytest tests/unit/test_x.py -k name`、`vitest run src/x.test.ts`、`go test ./pkg/x -run TestY`、`pest --filter=Y`）。テストスイート全体とカバレッジ計測は、完了 JSON を返す直前に 1 回だけ流す（2026-10 の notify-hub では、implementer の中でテスト・ビルドを合計 100 分以上繰り返していた）。レビュー指摘の修正で再開されたときも同じ
+- 完了前に、自分が書いたユニットテストを実行して全パスを確認し、規約の「標準コマンド（分岐カバレッジ）」で**変更した関数**の分岐カバレッジを計測する。閾値（`doc/conventions.md` の `coverage_threshold`、既定 0.80）未満の関数を `result.coverage.changed_functions_below_threshold` に列挙する（空でないとレビューに進めない。テストを減らして数字を上げる方向は禁止）
 
 **4. タスク単位コミット**（worktree ディレクトリ内で git commit）
 

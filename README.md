@@ -397,7 +397,7 @@ flowchart TD
     end
     RevC["Claude でレビュー"]
     Judge{"blocker / major<br/>はある？"}
-    Fix["同じ implementer が修正<br/>最大 5 回"]
+    Fix["同じ implementer が修正<br/>最大 3 回"]
     PR(["PR 作成 → 条件付き自動マージ"])
 
     Impl --> IC --> Rev --> Judge

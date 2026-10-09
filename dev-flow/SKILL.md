@@ -58,13 +58,13 @@ disable-model-invocation: true
 | kind | 用途 | requirements | spec | consistency | implementation | test | compliance |
 |---|---|---|---|---|---|---|---|
 | `feature` | 新機能（既定） | ● 新規作成 | ● 全文生成 | ● 全 STEP | ● | ● | ● 全 ID |
-| `change` | 既存機能の要件変更 | ● 修正モード | ● 差分更新 | ● Impact Analysis | ● 影響グループのみ | ● | ● 変更 ID のみ |
+| `change` | 既存機能の要件変更 | ● 修正モード | ● 差分更新 | ● Impact Analysis（変更 REQ 3 件以下は軽量） | ● 影響グループのみ | ● | ● 変更 ID・変更ファイルのみ |
 | `fix` | 不具合修正（要件は変えない） | — | ● 再現 TC 追加のみ | ● lite（1 グループ） | ● 1 グループ | ● | ● 追加 TC のみ |
 | `refactor` | 挙動を変えない内部改善 | — | — | ● lite（1 グループ） | ● 1 グループ | ● | ● 全 ID（挙動不変） |
 
 最初のステージは `feature` / `change` → `requirements`、`fix` → `spec`、`refactor` → `consistency`。`fix` / `refactor` は要件定義書と `tech_stack` が既にあることが前提（無ければ先に bootstrap）。
 
-**人間が確認するのは 2 か所だけ**: requirements の承認と、spec のレビュー（どちらも `feature` / `change` のとき）。`fix` / `refactor` は最初のステージから compliance まで止まらずに進む。それ以外で止まるのは、自動では片付かないことが起きたときだけ（hook の deny・エスカレーション・Plan Repair・implementer の `confidence < 0.5`・要件の意味を変えないと直せない指摘）。consistency の指摘は周回ごとの既定の方針で自動的に直し、implementer の `uncertainty_points` はレビュアーに判定させる。下流スキルにこれより多く人間に聞く記述が残っていたら、この段落を優先する。
+**人間が確認するのは 2 か所だけ**: requirements の承認と、spec のレビュー（どちらも `feature` / `change` のとき）。implementation で見つかった仕様書の不足（doc_issues）は、グループごとに聞かず全グループ完了後に 1 回でまとめて聞く。`fix` / `refactor` は最初のステージから compliance まで止まらずに進む。それ以外で止まるのは、自動では片付かないことが起きたときだけ（hook の deny・エスカレーション・Plan Repair・implementer の `confidence < 0.5`・要件の意味を変えないと直せない指摘）。consistency の指摘は周回ごとの既定の方針で自動的に直し、implementer の `uncertainty_points` はレビュアーに判定させる。下流スキルにこれより多く人間に聞く記述が残っていたら、この段落を優先する。
 
 ## 状態管理
 

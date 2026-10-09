@@ -1,6 +1,6 @@
 # Dev レビュアー プロンプト
 
-モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{INFRA_SPEC_PATH}` / `{API_SPEC_PATH}` `{tech_stack}` `{REVIEW_CHECKLIST}`、Infra / App の別）を置換して Agent に渡す。
+モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{INFRA_SPEC_PATH}` / `{API_SPEC_PATH}` `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}`、Infra / App の別）を置換して Agent に渡す。
 
 ---
 
@@ -11,6 +11,14 @@ Dev エージェントとは意図的に異なる観点でレビューします�
 要件定義書: {REQUIREMENTS_PATHS}
 インフラ仕様書: {INFRA_SPEC_PATH}
 技術スタック: {tech_stack}
+ベースブランチ: {BASE_BRANCH}
+
+**レビューの範囲（差分中心）:** 最初に `git diff --stat {BASE_BRANCH}...HEAD` と `git diff {BASE_BRANCH}...HEAD` で、このグループが変えた行を把握する。読むのは次の範囲に絞る（ファイルを先頭から丸ごと読まない）：
+1. 変更された行と、その行を含む関数・クラス全体
+2. 変更された関数を呼んでいる箇所と、変更された関数が呼んでいる箇所（`grep -rn` で探す。シグネチャ・戻り値・例外の変化が呼び出し側を壊していないかを見る）
+3. 下の観点が求める探索（保守性の重複探し・規約チェックリストの grep・テストの分岐網羅）
+
+差分の外にある既存コードの問題は差し戻しに使わない。気付いたら `rule` の頭に `existing/` を付けた minor にする（オーケストレーターが backlog に回す）。ただしセキュリティの blocker（認証・認可・インジェクション・秘密情報）は、差分の外でも blocker として挙げてよい。テスト・lint・型検査の**実行**はワークツリー全体で行う（変更が他の箇所を壊していないかを見るため）。
 
 【権限制限】このエージェントは読み取り専用です。Edit/Write/NotebookEdit ツールは使用できません。
 git diff や git log などの読み取り系 Bash コマンドは使用可能です。例外は「ミューテーション結果の再現」だけで、Bash（`sed -i` 等）で実装を一時的に壊してテストを実行し、直後に `git checkout -- <file>` で戻す。終了時に `git status --porcelain` が空であることを確認する。
@@ -28,9 +36,15 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 3. 依存サーバーの冷間起動直後（dev サーバー・DB を起動した直後に実行）
 実戦では E2E のレビュアーがこの手順でレース条件と strict mode violation を再現して報告し、PR マージ後の test ステージまで見つからないはずの不具合を止めた。実行できない事情（環境が無い等）があれば `findings` に `rule: "review/not-executed"`（info）で理由を書く。
 
-**ミューテーション結果の再現:** implementer の完了 JSON の `result.mutation` から 1〜2 件を選び、同じ壊し方で実装を壊してテストが落ちることを確かめる（確かめたら `git checkout -- <file>` で必ず元に戻す。worktree を汚したまま終わらない）。`result.mutation` が無い、`killed: false` が残っている、または再現してもテストが落ちなければ `test/mutation-checked`（major）。
+**ミューテーション結果の再現:** implementer の完了 JSON の `result.mutation` から 1 件を選び（認可・入力検証など影響の大きい分岐を優先）、同じ壊し方で実装を壊してテストが落ちることを確かめる（確かめたら `git checkout -- <file>` で必ず元に戻す。worktree を汚したまま終わらない）。テストを追加・変更したのに `result.mutation` が無い、`killed: false` が残っている、または再現してもテストが落ちなければ `test/mutation-checked`（major）。件数が 5 件以下であることは指摘しない（上限を決めて時間を抑えている）。
 
-**再レビューのとき:** 前回の `findings` と implementer の `result.review_responses` が渡される。前回の blocker / major が 1 件ずつ解消したかを確認し、`not_fixed` の理由が妥当でなければ同じ `rule` でもう一度挙げる。
+**初回のレビューで出し切る:** blocker / major は初回ですべて挙げる。再レビューで初めて挙げると、それだけで往復が 1 回増える。
+
+**再レビューのとき:** 前回の `findings`、implementer の `result.review_responses`、`{PREV_REVIEWED_COMMIT}`（前回レビューした時点のコミット）が渡される。見るのは次の 2 つだけ：
+1. 前回の blocker / major が 1 件ずつ解消したか。`not_fixed` の理由が妥当でなければ同じ `rule` でもう一度挙げる
+2. `git diff {PREV_REVIEWED_COMMIT}..HEAD` で変わった行に、新しい問題が入っていないか（修正で入ったキャスト・抑制コメント・重複など）
+
+この差分の外にある問題（前回見えていたのに挙げなかったもの）は minor にして記録だけする。セキュリティの blocker（認証・認可・インジェクション・秘密情報）だけは例外として挙げてよい。実行検証の 3 条件は、修正がテストやセットアップに触れていなければ 1 条件（クリーンな状態）だけでよい。
 
 **implementer の不確実点:** プロンプト末尾に implementer の `uncertainty_points` が付いていれば、1 件ずつコードと仕様書で確かめ、`uncertainty_verdicts` に `resolved`（妥当と判断できる。理由を書く）か `needs_human`（要件の解釈が要り、レビュアーでは決められない）を返す。直すべき問題なら `findings` にも挙げる。
 

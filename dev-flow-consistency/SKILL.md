@@ -28,6 +28,13 @@ disable-model-invocation: true
 - `fix` では、`doc/process/coverage_matrix.md` の該当 REQ の行の「テストID」列に追加 TC（`status: added`）の ID を Edit で書き足す（行列全体は作り直さない。ファイルが無ければ飛ばす）
 - STEP 5 の設計凍結コミットは実行する
 
+**小さい change（`kind = "change"` かつ `state.json.change_scale = "small"`。spec が変更 REQ 3 件以下のときに書く）の動作:**
+- STEP 0（Impact Analysis）を別のエージェントで動かさない。STEP 2 の整合性チェックのプロンプトに STEP 0 の手順を足して、1 つのエージェントに両方させる（どちらも同じ差分を読むので、分けると同じ読み込みを 2 回する）
+- STEP 1（ID 整合性）は、変更 REQ と、それを `covers` する TC / API / INFRA の ID だけを確かめる
+- STEP 3 のカバレッジ行列は作り直さず、変更 REQ の行だけを Edit で書き換える（ファイルが無ければ全体を作る）
+- STEP 4 の spec-cache-writer には「変更 REQ に関係する節だけを書き換え、ほかの節は触らない」と足す
+- 整合性チェックの周回（`prompts/consistency-check.md`）は 2 周まで。2 周目の指摘は「重要」だけ直し、もう一度チェックせずに STEP 4 へ進む（残りは 3 周目に達したときと同じく `consistency.deferred_findings` に記録する）
+
 **`mini` モードの動作:**
 - STEP 1（ID整合性）・STEP 2（整合性チェック）・STEP 3（カバレッジ行列）はスキップ
 - タスクチェックリストの**未着手グループのみ**を対象に checklist-writer を再実行（完了済みグループは保持）

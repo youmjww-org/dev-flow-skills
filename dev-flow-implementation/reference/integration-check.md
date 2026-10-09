@@ -23,8 +23,8 @@
    | 全パス | 3.5 へ |
    | テストコード側の不備（セットアップ漏れ・文言のタイプミス・セレクタの推測違い等） | QA implementer に `SendMessage` で修正を依頼する（軽微で明白なら オーケストレーターが直接直してもよい）。直った後 1 からやり直す |
    | 実装側の不備（QA の期待がテスト定義書どおりで、実装がそれに従っていない） | Dev implementer に `SendMessage` で修正を依頼する。直った後 1 からやり直す |
-   | テスト定義書自体の矛盾 | STEP G の `doc_issues` として扱い、人間に判断を仰ぐ |
-3.5. **ミューテーション確認（3 で全パスした後）**: QA implementer に `SendMessage` で「この統合済み worktree で、あなたが書いた仕様テストごとに [conventions/testing.md](conventions/testing.md) の『ミューテーション確認』をして、`result.mutation` を返す（壊した実装は必ず元に戻す。コミットしない）」と依頼する。QA は自分の worktree に実装が無いので、ここが唯一できる場所。`killed: false` があれば QA にテストを強化させ、2 からやり直す。結果は PR 説明に書き、QA reviewer に渡す
+   | テスト定義書自体の矛盾 | STEP G の `doc_issues` に記録する（人間に聞くのは全グループ完了後にまとめて。ただしこのグループが先に進めないものはその場で聞く） |
+3.5. **ミューテーション確認（3 で全パスした後）**: QA implementer に `SendMessage` で「この統合済み worktree で、あなたが書いた仕様テストのうち異常系・境界値を優先して最大 5 件、[conventions/testing.md](conventions/testing.md) の『ミューテーション確認』をして、`result.mutation` を返す（壊した実装は必ず元に戻す。コミットしない）」と依頼する。QA は自分の worktree に実装が無いので、ここが唯一できる場所。`killed: false` があれば QA にテストを強化させ、2 からやり直す。結果は PR 説明に書き、QA reviewer に渡す
 4. 検証用マージを**必ず取り消す**（PR の diff に Dev の変更が混ざらないようにする）：
    ```bash
    git reset --hard {マージ前の QA コミット}

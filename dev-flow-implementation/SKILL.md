@@ -124,10 +124,12 @@ DAGの依存関係に従って、実行可能なグループを並列に処理�
 ```
 while 未完了グループが存在する:
   実行可能グループ = depends_on が全て completed_groups に含まれるグループ
-  実行可能グループ を並列に STEP A〜H まで起動（Background で複数グループ同時進行）
+  実行可能グループ を並列に STEP A〜H まで起動（Background で複数グループ同時進行。同時に動かすのは最大 4 グループ）
   いずれかのグループ完了 → completed_groups に追加
   次の実行可能グループを評価して追加起動
 ```
+
+**同時に動かすグループは最大 4 つ、implementer は最大 8 本**（QA を part に分けたグループは part の数だけ implementer が増える）。consistency はグループを小さく切る（Dev タスク 3 件・TC 8 件まで）のでグループ数が増えるが、implementer は tmux のペインを 1 つずつ使い、上限に達するとレビュアーや修正の implementer を起動できなくなる。実行可能なグループが 5 つ以上あるときは、`depends_on` で後続に待たれている数が多いグループから起動する。グループの PR がマージされて Dev / QA implementer とレビュアーを閉じたら（STEP H）、次のグループを起動する。
 
 **state.json の `implementation_progress` に `depends_on` マップを追加:**
 
@@ -152,6 +154,8 @@ while 未完了グループが存在する:
 ### STEP A: チーム種別判定と worktree の作成（グループ開始時）
 
 `completed_groups` に含まれるグループは **スキップ** して次のグループへ進みます。
+
+**QA タスクが part に分かれたグループ:** チェックリストの `#### QA タスク (…) — part K` が 2 つ以上あるグループは、part ごとに QA の worktree・ブランチ・implementer・レビュー・PR を 1 組ずつ作る。part 1 は通常どおりの名前（`qa/app-group-N`）、part 2 以降は `N-pK` を付ける（`ensure-worktree.sh qa app N-p2` → worktree `worktree-qa-app-group-N-p2`、ブランチ `qa/app-group-N-p2`、エージェント名 `qa-implementer-app-group-N-p2`）。どの part も Dev と同時に起動する（QA は Dev の実装を待たない）。以下の STEP の「QA」は、part があれば part ごとに読む。
 
 **QA タスクが無いグループの扱い:** タスクチェックリストの `#### QA タスク` に実タスクが無く「対応する TC なし」等の注記のみのグループ（基盤構築グループに多い）は、**QA 用の worktree・ブランチ・エージェントを作らない**。Dev 側のみで STEP A〜H を進め、PR も Dev の 1 本だけ作る。使わない QA ブランチを作ると後で削除の手間が増えるだけで意味が無い。
 
@@ -201,7 +205,9 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 | qa-implementer-infra-group-N | `${CLAUDE_SKILL_DIR}/prompts/qa-infra.md` | Infra グループ |
 | qa-implementer-app-group-N | `${CLAUDE_SKILL_DIR}/prompts/qa-app.md` | App / Cross グループ |
 
-プロンプトファイル内のプレースホルダー（`{GROUP_N}`, `{MAIN_DIR}`, `{MODE}` 等）を実際の値に置換してからエージェントに渡すこと。
+プロンプトファイル内のプレースホルダー（`{GROUP_N}`, `{MAIN_DIR}`, `{MODE}` 等）を実際の値に置換してからエージェントに渡すこと。QA の part 2 以降は `{GROUP_N}` を `N-pK` に置き換え（worktree のパスとエージェント名がそれで決まる）、`{QA_APP_TASKS}` / `{QA_INFRA_TASKS}` にはその part のタスクと担当ファイルだけを入れる。
+
+**QA に Dev を待たせない:** QA implementer に「Dev の実装ができたら」「Dev ブランチを取り込んでから」のような指示を足さない。QA は仕様書だけでテストを書き終えて完了を返し、Dev の実装と合わせるのは STEP C.5（統合検証）でオーケストレーターが行う。2026-10 の notify-hub では、QA が Dev ブランチにファイルができるのを `until git cat-file -e ...; do sleep 15; done` で 10 分ずつ待ち、その間 QA が完了しないためにグループ全体が遅れた。
 
 **エージェント起動前のプロンプト追加注入:**
 
@@ -224,7 +230,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 3. **ファイルスコープガードレール**: 担当 worktree 配下の作業許可パターンと禁止パターンを明示
 4. **Opus 昇格時（cost のみ）**: Sonnet 試行履歴と未解決指摘を冒頭に追記
 
-**implementer のモデル（quality）:** 初回から `opus` で起動し、昇格ラダーは使わない。レビュー指摘の修正は同じ implementer に `SendMessage` で渡して直させる（STEP D の最大 5 回がそのまま上限）。`task_complexity` は見ない。
+**implementer のモデル（quality）:** 初回から `opus` で起動し、昇格ラダーは使わない。レビュー指摘の修正は同じ implementer に `SendMessage` で渡して直させる（STEP D の最大 3 回がそのまま上限）。`task_complexity` は見ない。
 
 **昇格ラダー（Dev/QA implementer、cost のみ）:**
 
@@ -258,7 +264,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 
 | status | blocker_type | 対応 |
 |---|---|---|
-| `"completed"` | — | `result.lint.exit_code` が **0 以外、または欠損**なら「lint / format / 型検査が通っていない」として同じ implementer を `SendMessage` で再開して解消させる（最大 2 回、それでも通らなければ `failed` 扱い）。**Dev implementer** は加えて `result.unit_tests.failed` が 0 でない、または `result.coverage.changed_functions_below_threshold` が**空でなければ**「ユニットテストを直す / 未到達分岐のユニットテストを追加する」よう再開させる（最大 2 回。テストを減らす方向の修正は却下）。`result.mutation` が無い、または `killed: false` が残っていれば「新しいテストごとにミューテーション確認（[conventions/testing.md](reference/conventions/testing.md)「ミューテーション確認」）をして、生き残った変異はテストを強化する」よう再開させる（最大 2 回）。**QA implementer** の `result.tests.failed` は Dev 実装が無い worktree では非 0 が正常なので、`note` に「Dev 実装待ち」以外の原因（構文エラー・セットアップ不備）が書かれている場合だけ再開させる。通ったら `result.commits` をログに記録して次の処理へ進む。`needs_human_review = true` や `uncertainty_points` があっても、ここでは人間に聞かない（STEP D でレビュアーに判定させる）。最終回答に JSON が無い（途中終了など）ときは、`git log` のコミットと STEP C.5 の統合検証の結果で代わりに確かめる |
+| `"completed"` | — | `result.lint.exit_code` が **0 以外、または欠損**なら「lint / format / 型検査が通っていない」として同じ implementer を `SendMessage` で再開して解消させる（最大 2 回、それでも通らなければ `failed` 扱い）。**Dev implementer** は加えて `result.unit_tests.failed` が 0 でない、または `result.coverage.changed_functions_below_threshold` が**空でなければ**「ユニットテストを直す / 未到達分岐のユニットテストを追加する」よう再開させる（最大 2 回。テストを減らす方向の修正は却下）。`result.mutation` が無い、または `killed: false` が残っていれば「重要な分岐を最大 5 件選んでミューテーション確認（[conventions/testing.md](reference/conventions/testing.md)「ミューテーション確認」）をして、生き残った変異はテストを強化する」よう再開させる（最大 2 回）。**QA implementer** の `result.tests.failed` は Dev 実装が無い worktree では非 0 が正常なので、`note` に「Dev 実装待ち」以外の原因（構文エラー・セットアップ不備）が書かれている場合だけ再開させる。通ったら `result.commits` をログに記録して次の処理へ進む。`needs_human_review = true` や `uncertainty_points` があっても、ここでは人間に聞かない（STEP D でレビュアーに判定させる）。最終回答に JSON が無い（途中終了など）ときは、`git log` のコミットと STEP C.5 の統合検証の結果で代わりに確かめる |
 | `"blocked"` | `"plan_repair_needed"` | **Plan Repair フローへ移行**（下記参照） |
 | `"blocked"` | その他 | AskUserQuestion で人間に判断を仰ぐ |
 | `"failed"` | — | AskUserQuestion で人間に報告し指示を仰ぐ |
@@ -280,7 +286,7 @@ JSON パース失敗時のフォールバックは reference 参照。
 
 Dev と QA は別 worktree で並行して作業しており、**QA は Dev の実装を見ずにインターフェースを推測してテストを書いている**。そのため、両者を合わせて初めて分かる不一致が高確率で発生する（実例: aria-label の命名違い、React Testing Library の `cleanup` 未登録によるテスト間の DOM 残留、エラーメッセージの句点有無、Dev/QA 双方が同名テストファイルを作成してのコンフリクト）。レビュアーに渡す前に、オーケストレーターが機械的に統合して実テストを回す。
 
-手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査を実行 → 不備は該当 implementer に差し戻し → 検証マージを `reset --hard` で取り消し → 統合結果を PR 説明に書く）は [reference/integration-check.md](reference/integration-check.md) を Read して従う。
+手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査を実行 → 不備は該当 implementer に差し戻し → 検証マージを `reset --hard` で取り消し → 統合結果を PR 説明に書く）は [reference/integration-check.md](reference/integration-check.md) を Read して従う。QA が part に分かれているときは、part ごとの QA worktree に同じ Dev ブランチを検証用にマージして、それぞれ行う（part 同士は担当ファイルが別なので、順番は問わない）。
 
 ---
 
@@ -315,13 +321,21 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 再レビューでは前回の `findings` と修正担当の `review_responses` をレビュアーに渡し、前回の指摘が 1 件ずつ解消したかを確認させる。
 
+**再レビューの範囲（往復を減らす）:** 各レビューを起動するときに対象 worktree の `git rev-parse HEAD` を控えておき、再レビューではその値を `{PREV_REVIEWED_COMMIT}` としてプロンプト末尾に付ける。再レビューで見るのは次の 2 つだけ：
+1. 前回の blocker / major が解消したか
+2. `git diff {PREV_REVIEWED_COMMIT}..HEAD`（修正で変わった行）に新しい問題が無いか
+
+前回のレビューで見えていたのに挙げなかった、修正で変わっていない箇所の問題は、再レビューでは minor として記録するだけにする（差し戻さない）。ただしセキュリティの blocker（認証・認可・インジェクション・秘密情報）だけは例外として挙げてよい。2026-10 の sandbox では、2 回目以降の差し戻しが「前回の修正で入った新しい問題」か「前回の指摘の直し残し」でほぼ占められていた。初回で全部挙げ、2 回目以降は差分だけを見れば、どちらも 1 往復で片付く。
+
+**上限（3 回）を超えたとき:** 3 回目の修正の後も blocker / major が残ったら、残りの `findings` を JSON のまま AskUserQuestion で人間に出す（「この指摘を残したまま PR にする / もう 1 回直させる / 自分で直す」）。上限まで回るのは、レビュアーと implementer の判断が食い違っているときがほとんどで、同じやり取りを続けても収まらない。
+
 **implementer の不確実点:** 対応する implementer の完了 JSON の `uncertainty_points` を、レビュアーのプロンプト末尾に JSON のまま付ける。レビュアーは 1 件ずつ `resolved`（コード・仕様書から妥当と判断できる）/ `needs_human`（要件の解釈が要る）を最終回答の `uncertainty_verdicts` で返す。`needs_human` が 1 件でもあるときだけ AskUserQuestion で人間に確かめる。
 
 **グループの範囲で直せない指摘（人間に聞かない）:** レビュー指摘の扱いを人間に聞くのは、上の `needs_human` があるときだけ。次のものは決めた方針で処理して先へ進む（2026-10 の API sandbox の検証で、既存コードの規約違反と仕様の書き漏れを人間に聞いて implementation が止まった）。
 
 | 指摘の種類 | 処理 |
 |---|---|
-| このグループの差分に無い既存コードの問題（既存ファイルの規約違反など）。同じ書き方を新しいコードが真似ているだけのものも含む | 直さない。`review-findings-backlog.md` に「既存コード」と書いて記録し、承認扱いにする。新しいコードだけ規約に合わせられるなら、それは直す |
+| このグループの差分に無い既存コードの問題（既存ファイルの規約違反など。レビュアーは `existing/` 付きの rule で返す）。同じ書き方を新しいコードが真似ているだけのものも含む | 直さない。`review-findings-backlog.md` に「既存コード」と書いて記録し、承認扱いにする。新しいコードだけ規約に合わせられるなら、それは直す |
 | 規約そのものを変える話（規約を緩める・新しい規約を作る） | 直さない。backlog に記録し、compliance の報告で推奨とあわせて出す |
 | 仕様（テスト定義書）に無い振る舞いのテストが欲しい（設計凍結後の仕様の書き漏れ） | minor なら backlog に記録して進む。major なら Plan Repair（`blocker_type: "plan_repair_needed"`）に回す |
 | `spec_cache.md` などの内部資料が古い | その場で直す（人間に聞かない） |
@@ -332,24 +346,24 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 Agent を起動（同期実行、`run_in_background=false`, `model="opus"`）。現行の Agent ツールにはツール制限パラメータが無いため、プロンプト冒頭に「**ファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認し、指摘は最終回答で返す（ミューテーション結果の再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を必ず含める：
 
-`prompts/reviewer-dev.md` を Read し、プレースホルダー（worktree パス・仕様書パス・`{tech_stack}`・`{REVIEW_CHECKLIST}`・Infra / App の別）を置換して渡す。プロンプトには「読み取り専用」「4 観点（保守性を含む）」「実行検証（3 条件）」「規約チェックリストの照合」「分岐→ユニットテストの要求」「ミューテーション結果の再現」「JSON 出力フォーマット」が含まれる。
+`prompts/reviewer-dev.md` を Read し、プレースホルダー（worktree パス・仕様書パス・`{tech_stack}`・`{REVIEW_CHECKLIST}`・`{BASE_BRANCH}`（`implementation_progress.base_branch`）・Infra / App の別）を置換して渡す。レビュアーは `git diff {BASE_BRANCH}...HEAD` の変更行と、その呼び出し元・呼び出し先を中心に読む（初回も差分中心。再レビューはさらに前回からの差分に絞る）。プロンプトには「読み取り専用」「4 観点（保守性を含む）」「実行検証（3 条件）」「規約チェックリストの照合」「分岐→ユニットテストの要求」「ミューテーション結果の再現」「JSON 出力フォーマット」が含まれる。
 
-`changes_requested` → `findings` のうち blocker / major を dev-implementer-infra-group-N に `SendMessage` で渡して修正（最大5回）。**渡し方は下の「レビュー指摘の渡し方」に従う。** minor は memory 蓄積用に記録するだけで修正ループに回さない。レビュアーは初回から Opus を使用するため、追加昇格は行わない。同じ `rule` が 3 回以上出たら [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md) の手順で memory に保存する。
+`changes_requested` → `findings` のうち blocker / major を dev-implementer-infra-group-N に `SendMessage` で渡して修正（最大 3 回）。**渡し方は下の「レビュー指摘の渡し方」に従う。** minor は memory 蓄積用に記録するだけで修正ループに回さない。レビュアーは初回から Opus を使用するため、追加昇格は行わない。同じ `rule` が 3 回以上出たら [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md) の手順で memory に保存する。
 
 #### Dev (App) レビュー（App / Cross グループ）
 
 同様に App Dev のシニアレビュアーエージェントを起動（`model="opus"`、編集禁止をプロンプトに明記、懐疑的レビュアー観点: セキュリティ・新人可読性・アーキテクチャ・保守性、`{REVIEW_CHECKLIST}` の照合、同じ JSON 出力）。
-`changes_requested` → blocker / major を dev-implementer-app-group-N に渡して修正（最大5回）。
+`changes_requested` → blocker / major を dev-implementer-app-group-N に渡して修正（最大 3 回）。
 
 #### QA (Infra) レビュー（Infra / Cross グループ）
 
 Infra QA のシニアレビュアーエージェントを起動（`model="opus"`、編集禁止をプロンプトに明記）。
-QA レビュアーは「素朴な質問だけ」する観点を採用: コードの良し悪しではなく、理解できない点・テストの意図が不明な点のみ指摘する。`{REVIEW_CHECKLIST}` のうち `test/*`（[conventions/testing.md](reference/conventions/testing.md)）と各言語のテスト関連ルール（`*/table-driven` `*/parametrize` `*/test-*` 等）を照合する。特に `test/no-delete` / `test/no-skip` / `test/expected-from-impl` は blocker。`git diff` で削除行を確認する。**TC 網羅**（`test/tc-coverage`）: テスト定義書 frontmatter の `test_cases[].id` と QA worktree のテストの TC-ID を突き合わせ、欠けが無いか見る。**置き場**（`test/unit-vs-spec-split`）: QA が実装の内部関数を直接呼ぶユニットテストや `tests/Unit/**` を書いていないか見る（Dev の担当。同じパスでコンフリクトする）。**ミューテーション**（`test/mutation-checked`）: 統合検証 3.5 の QA の `result.mutation` を渡し、仕様テストごとに記録があり全件 `killed: true` かを見る（QA worktree には実装が無いので再現はしない）。実装の分岐網羅は Dev reviewer の担当なので見なくてよい。出力は Dev レビューと同じ JSON。`changes_requested` → qa-implementer-infra-group-N に渡して修正（最大5回）。
+QA レビュアーは「素朴な質問だけ」する観点を採用: コードの良し悪しではなく、理解できない点・テストの意図が不明な点のみ指摘する。読む範囲は `git diff {BASE_BRANCH}...HEAD` で QA が追加・変更したテストに絞る（既存のテストファイルは、変更された箇所と TC 網羅の照合に要る分だけ読む。差分の外の既存テストの問題は `existing/` 付きの minor にする）。`{REVIEW_CHECKLIST}` のうち `test/*`（[conventions/testing.md](reference/conventions/testing.md)）と各言語のテスト関連ルール（`*/table-driven` `*/parametrize` `*/test-*` 等）を照合する。特に `test/no-delete` / `test/no-skip` / `test/expected-from-impl` は blocker。`git diff` で削除行を確認する。**TC 網羅**（`test/tc-coverage`）: テスト定義書 frontmatter の `test_cases[].id` と QA worktree のテストの TC-ID を突き合わせ、欠けが無いか見る。**置き場**（`test/unit-vs-spec-split`）: QA が実装の内部関数を直接呼ぶユニットテストや `tests/Unit/**` を書いていないか見る（Dev の担当。同じパスでコンフリクトする）。**ミューテーション**（`test/mutation-checked`）: 統合検証 3.5 の QA の `result.mutation` を渡し、1〜5 件の記録があり全件 `killed: true` かを見る（QA worktree には実装が無いので再現はしない）。実装の分岐網羅は Dev reviewer の担当なので見なくてよい。出力は Dev レビューと同じ JSON。`changes_requested` → qa-implementer-infra-group-N に渡して修正（最大 3 回）。
 
 #### QA (App) レビュー（App / Cross グループ）
 
 App QA のシニアレビュアーエージェントを起動（`model="opus"`、編集禁止をプロンプトに明記、QA 素朴質問観点。implementer の `uncertainty_points` の判定も Dev レビューと同じく `uncertainty_verdicts` で返させる）。
-`{REVIEW_CHECKLIST}` の `test/*` と言語のテスト関連ルールを照合（Infra QA と同じ基準）。出力は同じ JSON。`changes_requested` → qa-implementer-app-group-N に渡して修正（最大5回）。
+`{REVIEW_CHECKLIST}` の `test/*` と言語のテスト関連ルールを照合（Infra QA と同じ基準）。出力は同じ JSON。`changes_requested` → qa-implementer-app-group-N に渡して修正（最大 3 回）。
 
 
 ---
@@ -361,6 +375,7 @@ App QA のシニアレビュアーエージェントを起動（`model="opus"`�
 - **Infra**: `dev/infra-group-N`, `qa/infra-group-N` → 2PR作成、label=`infra`
 - **App**: `dev/app-group-N`, `qa/app-group-N` → 2PR作成、label=`app`
 - **Cross**: 4ブランチすべて → 4PR作成、Infraブランチには`infra,cross`、Appブランチには`app,cross`
+- QA が part に分かれているときは、part 2 以降のブランチ（`qa/{team}-group-N-pK`）も 1 本ずつ PR にする（タイトルに `part K` を入れる）。マージは Dev → QA の各 part の順（[reference/merge-ops.md](reference/merge-ops.md)。どの part も Dev のマージ後に `update-branch` する）
 
 PRタイトル例: 
 - `feat(infra): グループ N Infra Dev タスク実装`
@@ -379,7 +394,7 @@ gh pr create --base "$BASE_BRANCH" --head dev/infra-group-N --title "..." --body
 
 ### STEP F: worktreeクリーンアップ
 
-PR作成後、worktreeを削除（ブランチは保持）：
+PR作成後、worktreeを削除（ブランチは保持）。QA の part 2 以降の worktree（`worktree-qa-{team}-group-N-pK`）も同じく削除し、STEP H では part のブランチも消す：
 
 **Infra / App:**
 ```bash
@@ -401,7 +416,7 @@ git worktree remove {MAIN_DIR}/../worktree-qa-app-group-N --force
 
 **doc_issues の集約（グループ完了後）:**
 
-各エージェントの完了 JSON に `doc_issues` フィールドが含まれている場合、内容を集約してグループ完了時に AskUserQuestion で人間に提示します：
+各エージェントの完了 JSON に `doc_issues` フィールドが含まれている場合、内容を `doc/process/doc_issues.md` に追記します（`| # | グループ | doc | ref_id | 内容 | 修正案 | 実装の現状 |`）。**グループの完了ごとには人間に聞かない。** 全グループの完了後（「全グループ完了後」の手順 0 の前）に、たまった分を 1 回の AskUserQuestion にまとめて出します（1 回に 4 問まで。多ければ関連するものを 1 問に束ねる）。2026-10 の notify-hub ではグループの完了ごとに聞いていたため、そのたびにオーケストレーターが止まり、レビュー待ちや次のグループの起動も止まっていた。
 
 ```json
 {
@@ -416,9 +431,13 @@ git worktree remove {MAIN_DIR}/../worktree-qa-app-group-N --force
 }
 ```
 
+ただし、次のものはまとめずにその場で聞く（待つと後のグループのやり直しが増える）：
+- そのグループのレビューやテストが、その doc_issue の答え無しには進められない
+- 後続のグループ（`depends_on` でつながるもの）が、同じ箇所を前提に実装する
+
 人間の判断：
 - 「ドキュメントを修正する（doc-fix ブランチ）」→ doc-fix フローを実行
-- 「実装側で対応する」→ Dev エージェントに修正を依頼
+- 「実装側で対応する」→ 全グループ完了後なら Plan Repair（`plan_repair_needed`）で修正タスクを 1 グループ足す。グループの途中なら Dev エージェントに修正を依頼
 - 「無視する」→ そのまま続行
 
 **doc-fix フロー:**
@@ -455,12 +474,15 @@ jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/s
 1.5. **実バージョンの確認（基盤グループのみ）**: 「実バージョンの書き戻し」タスクを含むグループなら、マージ後の `state.json.tech_stack.language_version` / `framework_version` が lock ファイルと一致しているか `jq` で確認する。タスクが書き戻していなければオーケストレーターが lock から読んで `state.json` だけ更新する（要件定義書は人間確認が要るので、compliance の乖離として残す）
 2. **レビュー findings の集約**: `doc/process/reviews/group-{N}-*.json`（STEP D で保存したもの）を Read し、このグループの全レビュー（Dev / QA）の `findings` のうち、`rule` が `review/*`（規約ファイルに無かった指摘）で、かつプロジェクト固有でない汎用的なもの（例: `role="button"` の Space キー未対応、`aria-live` の常時マウント、`onClick={async}` の floating promise、`{n && <X />}` の 0 描画）を `doc/process/review-findings-backlog.md` に追記する（`| グループ | rule | severity | 内容 | 該当ファイル | 昇格先候補（react.md / laravel.md / testing.md 等） |` の表。同じ内容が既にあれば行を足さず「回数」列を増やす）。memory 保存の条件（同一 rule 3 回）に届かない minor / major の指摘が次のプロジェクトで消えないようにするため。compliance の完了レポートで「規約ファイルへの昇格候補」として人間に提示する
 3. `${CLAUDE_SKILL_DIR}/../dev-flow/hooks/mark-group-done.sh N <PR番号...>` を実行する（1 回の Bash で）。チェックリストのグループ N（全一覧セクションの同一タスクも）を `[x]` にし、`state.json` の `completed_groups` / `active_worktrees` / `pr_numbers` を更新して 1 コミットする。冪等なので再開時に再実行してよい。hook 未導入環境（スクリプトが無い）では同じ内容を手で行う：チェックリストの `[x]` 化 → `implementation_progress` の更新 → 2 ファイルを 1 コミット
+4. このグループの Dev / QA implementer と Claude のレビュアーを `TaskStop` で閉じる（ペインを空けて、待っているグループを起動できるようにする）
 
 ---
 
 ## 全グループ完了後
 
 すべてのグループ完了後：
+
+**最初に、たまった doc_issues をまとめて聞く**: `doc/process/doc_issues.md` に未判断のものがあれば、STEP G の「人間の判断」の 3 択で 1 回の AskUserQuestion にまとめて出す。「ドキュメントを修正する」はベースブランチに直接 `docs:` コミットしてよい（全グループがマージ済みなので doc-fix ブランチは要らない）。「実装側で対応する」が 1 件でもあれば Plan Repair に回し、追加グループが終わってから次へ進む
 
 0. **リモートの実際の状態を確認する**（state.json を更新する前に。hook 導入環境では、これをしないと `state-sync.sh` が test への移行を拒否する）：
    ```bash
@@ -472,7 +494,7 @@ jq -e '[.. | strings | select(test("pr-merge-guard"))] | length > 0' ~/.claude/s
    - `next_stage` を `"test"` に変更
    - `base_branch` に `implementation_progress.base_branch` を写す（test ステージが origin と同期するのに使う）
    - `implementation_progress` を削除
-   - **`mode == "incremental"` の場合のみ**：`baseline_commit` を `git rev-parse HEAD`（ベースブランチに全 PR がマージされた後の最新コミット）で上書き。これにより、次回 `incremental` 実行時の差分基点が今回マージ完了時点に進む
+   - **`mode == "incremental"` の場合のみ**：上書きする前の `baseline_commit` を `diff_base_commit` に写し（compliance が今回の run の差分を取るのに使う）、`baseline_commit` を `git rev-parse HEAD`（ベースブランチに全 PR がマージされた後の最新コミット）で上書き。これにより、次回 `incremental` 実行時の差分基点が今回マージ完了時点に進む
 2. 人間に「implementation 完了。次は `/dev-flow` を実行して test（テスト実行）に進んでください」と通知（0 の出力を添える）
 
 `baseline_commit` 更新の責任分担詳細は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/state-schema.md` の「baseline_commit のライフサイクル」を参照。

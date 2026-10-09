@@ -83,6 +83,8 @@
 | `kind` | 変更種別 `"feature"` / `"change"` / `"fix"` / `"refactor"`。通るステージが変わる（`dev-flow/SKILL.md` の「ステージと変更種別」参照） |
 | `reviewer_engine` | レビュアーを動かすもの `"auto"`（既定。codex が使えれば Codex CLI、使えなければ Claude）/ `"claude"`（常に Claude）。欠損時は `auto`。`/dev-flow --reviewer=...` で書き換える（`reference/codex-review.md`） |
 | `profile` | 実行プロファイル `"quality"`（既定）/ `"cost"`。モデル・ステージの実行方法・待ち時間が変わる（`reference/profiles.md`）。欠損時は `quality`。`/dev-flow --profile=...` で run の途中でも書き換えられる |
+| `change_scale` | `kind = "change"` のときだけ spec が書く。変更 REQ が 3 件以下なら `"small"`、それより多ければ `"normal"`。`small` では consistency と compliance が変更 REQ の範囲だけを見る（`dev-flow-consistency/SKILL.md`「小さい change」） |
+| `diff_base_commit` | implementation 完了時に、進める前の `baseline_commit` を写したもの。compliance が今回の run で変わったファイルを `git diff --name-only` で取るのに使う。compliance 完了時に消す |
 | `task` | オーケストレーターの引数 TASK（人間が書いた変更内容）。spec の `fix` 再現 TC や consistency の lite チェックリストが参照する |
 | `mode` | `"full"`（新規）/ `"incremental"`（差分のみ）。実装コードがある時点で `incremental` |
 | `baseline_commit` | `incremental` 時のみ設定。設定主体・更新主体・参照範囲は下記「baseline_commit のライフサイクル」を参照 |
@@ -104,7 +106,8 @@
 | consistency STEP 0 | `stage-consistency-agent`（Impact Analysis） | `git diff $baseline_commit...HEAD -- doc/` で要件差分を抽出。**書き換えない** |
 | implementation 開始時 | `stage-implementation-agent` | 実装範囲決定のために参照。**書き換えない** |
 | implementation 完了時 | `stage-implementation-agent` | 全グループの PR がマージされた後、`git rev-parse HEAD`（=ベースブランチの最新 HEAD）を `baseline_commit` に書き戻して state.json を保存 |
-| test / compliance | 参照しない | テスト・準拠チェックは `baseline_commit` に依存しない |
+| implementation 完了時（続き） | 同上 | 書き戻す前の値を `diff_base_commit` に写す |
+| test / compliance | `baseline_commit` は参照しない | compliance は `kind` が `change` / `fix` のとき `diff_base_commit` から今回の差分を取る |
 
 `full` モードでは `baseline_commit = null` 固定。すべてのアクターは null を見たら「全範囲対象」と解釈する。
 

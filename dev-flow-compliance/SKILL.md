@@ -124,6 +124,12 @@ find . -type f \
 
 列挙されたファイルを Read ツールで読み込む。ファイル数が多い場合は API 仕様書のエンドポイント一覧を基準に、関連するハンドラ・サービスファイルを優先して読み込む。
 
+**`kind` が `change` / `fix` のときは全ファイルを読まない。** 読むのは次のものだけ（2026-10 の sandbox-api では、小さい change でもここで全実装を読み、1 回 6 分かかっていた）：
+- `git diff --name-only {DIFF_BASE}..HEAD` に出る実装ファイル（ドキュメント・テストを除く）。`{DIFF_BASE}` は `state.json.diff_base_commit`（implementation が `baseline_commit` を進める前の値）。無ければ `base_branch` の分岐元（`git merge-base origin/main HEAD` 等）を使い、それも決まらなければ全ファイルを読む
+- 対象 ID（STEP 0）の API のルート定義と、そのハンドラ・サービス
+
+乖離の検出（手順 2）も対象 ID の範囲だけで行う。差分の外で気付いた乖離は「対象外で見つけたもの」として報告に書くだけにする（直さない）。
+
 **2. 乖離の検出**
 
 以下の観点でドキュメントと実装を比較する：
@@ -243,6 +249,7 @@ git log --oneline --grep="^fix\|^chore" -- .
    - `next_stage` を `"completed"`
    - `baseline_commit` を `git rev-parse HEAD`（次の change / fix の差分基点）
    - `implementation_progress` を削除
+   - `diff_base_commit` と `change_scale` を削除（今回の run だけで使うもの）
    hooks が `task_checklist.md` のステージ進捗を全完了に同期し、`flow.log` に完了を記録する
 3. `git add doc/ && git commit -m "docs: {kind} 完了（{task の要約}）"` で仕様書の status 除去と state.json を確定
 4. 人間に「すべてのステージが完了しました。次の変更は `/dev-flow --kind=change|fix|refactor "内容"` で始められます」と通知

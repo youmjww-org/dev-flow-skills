@@ -335,7 +335,7 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 | 指摘の種類 | 処理 |
 |---|---|
-| このグループの差分に無い既存コードの問題（既存ファイルの規約違反など）。同じ書き方を新しいコードが真似ているだけのものも含む | 直さない。`review-findings-backlog.md` に「既存コード」と書いて記録し、承認扱いにする。新しいコードだけ規約に合わせられるなら、それは直す |
+| このグループの差分に無い既存コードの問題（既存ファイルの規約違反など。レビュアーは `existing/` 付きの rule で返す）。同じ書き方を新しいコードが真似ているだけのものも含む | 直さない。`review-findings-backlog.md` に「既存コード」と書いて記録し、承認扱いにする。新しいコードだけ規約に合わせられるなら、それは直す |
 | 規約そのものを変える話（規約を緩める・新しい規約を作る） | 直さない。backlog に記録し、compliance の報告で推奨とあわせて出す |
 | 仕様（テスト定義書）に無い振る舞いのテストが欲しい（設計凍結後の仕様の書き漏れ） | minor なら backlog に記録して進む。major なら Plan Repair（`blocker_type: "plan_repair_needed"`）に回す |
 | `spec_cache.md` などの内部資料が古い | その場で直す（人間に聞かない） |
@@ -346,7 +346,7 @@ Dev と QA は別 worktree で並行して作業しており、**QA は Dev の�
 
 Agent を起動（同期実行、`run_in_background=false`, `model="opus"`）。現行の Agent ツールにはツール制限パラメータが無いため、プロンプト冒頭に「**ファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認し、指摘は最終回答で返す（ミューテーション結果の再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を必ず含める：
 
-`prompts/reviewer-dev.md` を Read し、プレースホルダー（worktree パス・仕様書パス・`{tech_stack}`・`{REVIEW_CHECKLIST}`・Infra / App の別）を置換して渡す。プロンプトには「読み取り専用」「4 観点（保守性を含む）」「実行検証（3 条件）」「規約チェックリストの照合」「分岐→ユニットテストの要求」「ミューテーション結果の再現」「JSON 出力フォーマット」が含まれる。
+`prompts/reviewer-dev.md` を Read し、プレースホルダー（worktree パス・仕様書パス・`{tech_stack}`・`{REVIEW_CHECKLIST}`・`{BASE_BRANCH}`（`implementation_progress.base_branch`）・Infra / App の別）を置換して渡す。レビュアーは `git diff {BASE_BRANCH}...HEAD` の変更行と、その呼び出し元・呼び出し先を中心に読む（初回も差分中心。再レビューはさらに前回からの差分に絞る）。プロンプトには「読み取り専用」「4 観点（保守性を含む）」「実行検証（3 条件）」「規約チェックリストの照合」「分岐→ユニットテストの要求」「ミューテーション結果の再現」「JSON 出力フォーマット」が含まれる。
 
 `changes_requested` → `findings` のうち blocker / major を dev-implementer-infra-group-N に `SendMessage` で渡して修正（最大 3 回）。**渡し方は下の「レビュー指摘の渡し方」に従う。** minor は memory 蓄積用に記録するだけで修正ループに回さない。レビュアーは初回から Opus を使用するため、追加昇格は行わない。同じ `rule` が 3 回以上出たら [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md) の手順で memory に保存する。
 
@@ -358,7 +358,7 @@ Agent を起動（同期実行、`run_in_background=false`, `model="opus"`）。
 #### QA (Infra) レビュー（Infra / Cross グループ）
 
 Infra QA のシニアレビュアーエージェントを起動（`model="opus"`、編集禁止をプロンプトに明記）。
-QA レビュアーは「素朴な質問だけ」する観点を採用: コードの良し悪しではなく、理解できない点・テストの意図が不明な点のみ指摘する。`{REVIEW_CHECKLIST}` のうち `test/*`（[conventions/testing.md](reference/conventions/testing.md)）と各言語のテスト関連ルール（`*/table-driven` `*/parametrize` `*/test-*` 等）を照合する。特に `test/no-delete` / `test/no-skip` / `test/expected-from-impl` は blocker。`git diff` で削除行を確認する。**TC 網羅**（`test/tc-coverage`）: テスト定義書 frontmatter の `test_cases[].id` と QA worktree のテストの TC-ID を突き合わせ、欠けが無いか見る。**置き場**（`test/unit-vs-spec-split`）: QA が実装の内部関数を直接呼ぶユニットテストや `tests/Unit/**` を書いていないか見る（Dev の担当。同じパスでコンフリクトする）。**ミューテーション**（`test/mutation-checked`）: 統合検証 3.5 の QA の `result.mutation` を渡し、1〜5 件の記録があり全件 `killed: true` かを見る（QA worktree には実装が無いので再現はしない）。実装の分岐網羅は Dev reviewer の担当なので見なくてよい。出力は Dev レビューと同じ JSON。`changes_requested` → qa-implementer-infra-group-N に渡して修正（最大 3 回）。
+QA レビュアーは「素朴な質問だけ」する観点を採用: コードの良し悪しではなく、理解できない点・テストの意図が不明な点のみ指摘する。読む範囲は `git diff {BASE_BRANCH}...HEAD` で QA が追加・変更したテストに絞る（既存のテストファイルは、変更された箇所と TC 網羅の照合に要る分だけ読む。差分の外の既存テストの問題は `existing/` 付きの minor にする）。`{REVIEW_CHECKLIST}` のうち `test/*`（[conventions/testing.md](reference/conventions/testing.md)）と各言語のテスト関連ルール（`*/table-driven` `*/parametrize` `*/test-*` 等）を照合する。特に `test/no-delete` / `test/no-skip` / `test/expected-from-impl` は blocker。`git diff` で削除行を確認する。**TC 網羅**（`test/tc-coverage`）: テスト定義書 frontmatter の `test_cases[].id` と QA worktree のテストの TC-ID を突き合わせ、欠けが無いか見る。**置き場**（`test/unit-vs-spec-split`）: QA が実装の内部関数を直接呼ぶユニットテストや `tests/Unit/**` を書いていないか見る（Dev の担当。同じパスでコンフリクトする）。**ミューテーション**（`test/mutation-checked`）: 統合検証 3.5 の QA の `result.mutation` を渡し、1〜5 件の記録があり全件 `killed: true` かを見る（QA worktree には実装が無いので再現はしない）。実装の分岐網羅は Dev reviewer の担当なので見なくてよい。出力は Dev レビューと同じ JSON。`changes_requested` → qa-implementer-infra-group-N に渡して修正（最大 3 回）。
 
 #### QA (App) レビュー（App / Cross グループ）
 

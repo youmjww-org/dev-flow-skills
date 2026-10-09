@@ -127,7 +127,7 @@ Impact Analysis 完了後、その結果を STEP 4（checklist-writer）に渡�
 `mode` によって実行内容が異なります。
 
 - **`mode = "full"`**: ドキュメント間の矛盾・考慮漏れを検出する（従来通り）
-- **`mode = "incremental"`**: `baseline_commit` 以降に変更されたドキュメントと既存コードを比較し、「未実装の差分」を検出する（STEP 0 の Impact Analysis 結果を参考にする）
+- **`mode = "incremental"`**: `baseline_commit` 以降に変更されたドキュメントと既存コードを比較し、「未実装の差分」を検出する（STEP 0 の Impact Analysis 結果を参考にする）。あわせて、`status` の付いていない既存 TC にテストがあるか（`implemented_by` の関数、または TC-ID の grep）を確かめ、無い TC はチェックリストに QA タスクとして入れる（テストが無いまま compliance で見つかると、レビューを通らないテストがそこで足される）
 
 以下のエージェントを起動（同期実行、`run_in_background=false`, `model="opus"`）。
 

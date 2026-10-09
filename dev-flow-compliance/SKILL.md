@@ -141,6 +141,7 @@ find . -type f \
   - 例：実装してみて初めて判明した仕様の矛盾・不整合
 
 **4. A カテゴリの自動修正**
+- テストが無い TC は、ここではテストを書かない（PR とレビューを通らないテストが入る）。`next_stage` を `plan_repair` にして QA タスクとして足させ、implementation に戻す。consistency の取りこぼしなので、原因（TC の振り直し等）を完了報告に書く
 - 実装を Edit ツールで修正する
 - 修正後、変更をコミットする：
   ```bash
@@ -237,7 +238,7 @@ git log --oneline --grep="^fix\|^chore" -- .
 
 完了レポートを送信したら、以下を実行：
 
-1. テスト定義書・API 仕様書・インフラ仕様書の frontmatter に `status: added|modified` があれば、`kind` に関係なく取り除く（`feature` でも既存の文書に差分として足すと付く）（次の run が差分を正しく判定できるように）。要件定義書の `（廃止）` 項目はそのまま残す
+1. 要件定義書・テスト定義書・API 仕様書・インフラ仕様書の frontmatter に `status: added|modified` があれば、`kind` に関係なく取り除く（`feature` でも既存の文書に差分として足すと付く）（次の run が差分を正しく判定できるように）。要件定義書の `（廃止）` 項目はそのまま残す
 2. `doc/process/state.json` を更新して保存（**削除しない**。`tech_stack` / 各パス / `is_*` / `baseline_commit` は次の run が使う）：
    - `next_stage` を `"completed"`
    - `baseline_commit` を `git rev-parse HEAD`（次の change / fix の差分基点）

@@ -227,10 +227,7 @@ git log --oneline --grep="^fix\|^chore" -- .
 ```
 
 ### 規約ファイルへの昇格候補
-`doc/process/review-findings-backlog.md` があれば、その表を「回数」の多い順に提示し、次を人間に問う（AskUserQuestion、複数選択）：
-- 「{rule}: {内容}」を `dev-flow-implementation/reference/conventions/{昇格先}.md` のチェックリストに追加する（dev-flow-skills リポジトリへの PR が必要。ここでは候補の提示まで）
-- このプロジェクト固有なので `doc/conventions.md` に追加する（その場で追記する）
-- 見送る
+`doc/process/review-findings-backlog.md` があれば、その表を「回数」の多い順に完了報告に載せ、候補ごとに推奨（dev-flow-skills の規約へ / このプロジェクトの `doc/conventions.md` へ / 見送り）と理由を添える。**人間には聞かず、フローも止めない**（人間に確認するのは requirements と spec の 2 か所だけ）。追記もしない。人間が報告を読んで、`doc/conventions.md` への追記や dev-flow-skills への PR を後から決める。
 無ければ「レビューで規約外の汎用指摘はありませんでした」と書く。
 ```
 

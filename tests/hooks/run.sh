@@ -436,7 +436,7 @@ cat > "$dir/doc/process/task_checklist.md" <<'EOF'
 ## QAタスク（QAチーム）全一覧
 - [ ] TC-001 の Feature テスト
 EOF
-write_state "$dir" implementation '.implementation_progress = {total_groups: 2, completed_groups: [], active_worktrees: ["worktree-dev-app-group-1", "worktree-qa-app-group-1", "worktree-dev-app-group-2"], pr_numbers: {}}'
+write_state "$dir" implementation '.implementation_progress = {total_groups: 2, completed_groups: [], active_worktrees: ["worktree-dev-app-group-1", "worktree-qa-app-group-1", "qa/app-group-1-p2", "worktree-dev-app-group-2", "dev/app-group-10"], pr_numbers: {}}'
 (cd "$dir" && git add -A && git commit -qm init)
 out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 1 12 13 2>&1)"; rc=$?
 assert_eq "正常終了" "$rc" "0"
@@ -445,7 +445,7 @@ assert_contains "グループ 1 の QA タスクが [x]" "$(cat "$dir/doc/proces
 assert_contains "グループ 2 のタスクは [ ] のまま" "$(cat "$dir/doc/process/task_checklist.md")" "- [ ] API 実装"
 assert_eq "全一覧の同一タスクも [x]" "$(grep -c '^- \[x\] migration 作成' "$dir/doc/process/task_checklist.md")" "2"
 assert_eq "completed_groups に追加" "$(jq -c .implementation_progress.completed_groups "$dir/doc/process/state.json")" '["group-1"]'
-assert_eq "group-1 の worktree だけ除去" "$(jq -c .implementation_progress.active_worktrees "$dir/doc/process/state.json")" '["worktree-dev-app-group-2"]'
+assert_eq "group-1 の worktree だけ除去（QA の part 2 も消え、group-10 は残る）" "$(jq -c .implementation_progress.active_worktrees "$dir/doc/process/state.json")" '["worktree-dev-app-group-2","dev/app-group-10"]'
 assert_eq "pr_numbers に記録" "$(jq -c '.implementation_progress.pr_numbers["group-1"]' "$dir/doc/process/state.json")" '[12,13]'
 assert_contains "コミットされる" "$(cd "$dir" && git log --oneline -1)" "グループ 1 完了"
 assert_contains "flow.log に記録" "$(cat "$dir/doc/process/flow.log")" "event=group_done group=group-1"

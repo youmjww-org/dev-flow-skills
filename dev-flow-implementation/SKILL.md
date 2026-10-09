@@ -129,7 +129,7 @@ while 未完了グループが存在する:
   次の実行可能グループを評価して追加起動
 ```
 
-**同時に動かすグループは最大 4 つ**（implementer が最大 8 本）。consistency はグループを小さく切る（Dev タスク 3 件・TC 8 件まで）のでグループ数が増えるが、implementer は tmux のペインを 1 つずつ使い、上限に達するとレビュアーや修正の implementer を起動できなくなる。実行可能なグループが 5 つ以上あるときは、`depends_on` で後続に待たれている数が多いグループから起動する。グループの PR がマージされて Dev / QA implementer とレビュアーを閉じたら（STEP H）、次のグループを起動する。
+**同時に動かすグループは最大 4 つ、implementer は最大 8 本**（QA を part に分けたグループは part の数だけ implementer が増える）。consistency はグループを小さく切る（Dev タスク 3 件・TC 8 件まで）のでグループ数が増えるが、implementer は tmux のペインを 1 つずつ使い、上限に達するとレビュアーや修正の implementer を起動できなくなる。実行可能なグループが 5 つ以上あるときは、`depends_on` で後続に待たれている数が多いグループから起動する。グループの PR がマージされて Dev / QA implementer とレビュアーを閉じたら（STEP H）、次のグループを起動する。
 
 **state.json の `implementation_progress` に `depends_on` マップを追加:**
 
@@ -154,6 +154,8 @@ while 未完了グループが存在する:
 ### STEP A: チーム種別判定と worktree の作成（グループ開始時）
 
 `completed_groups` に含まれるグループは **スキップ** して次のグループへ進みます。
+
+**QA タスクが part に分かれたグループ:** チェックリストの `#### QA タスク (…) — part K` が 2 つ以上あるグループは、part ごとに QA の worktree・ブランチ・implementer・レビュー・PR を 1 組ずつ作る。part 1 は通常どおりの名前（`qa/app-group-N`）、part 2 以降は `N-pK` を付ける（`ensure-worktree.sh qa app N-p2` → worktree `worktree-qa-app-group-N-p2`、ブランチ `qa/app-group-N-p2`、エージェント名 `qa-implementer-app-group-N-p2`）。どの part も Dev と同時に起動する（QA は Dev の実装を待たない）。以下の STEP の「QA」は、part があれば part ごとに読む。
 
 **QA タスクが無いグループの扱い:** タスクチェックリストの `#### QA タスク` に実タスクが無く「対応する TC なし」等の注記のみのグループ（基盤構築グループに多い）は、**QA 用の worktree・ブランチ・エージェントを作らない**。Dev 側のみで STEP A〜H を進め、PR も Dev の 1 本だけ作る。使わない QA ブランチを作ると後で削除の手間が増えるだけで意味が無い。
 
@@ -203,7 +205,7 @@ Dev/QA implementer は数十分単位で稼働するため、pane 型サブエ�
 | qa-implementer-infra-group-N | `${CLAUDE_SKILL_DIR}/prompts/qa-infra.md` | Infra グループ |
 | qa-implementer-app-group-N | `${CLAUDE_SKILL_DIR}/prompts/qa-app.md` | App / Cross グループ |
 
-プロンプトファイル内のプレースホルダー（`{GROUP_N}`, `{MAIN_DIR}`, `{MODE}` 等）を実際の値に置換してからエージェントに渡すこと。
+プロンプトファイル内のプレースホルダー（`{GROUP_N}`, `{MAIN_DIR}`, `{MODE}` 等）を実際の値に置換してからエージェントに渡すこと。QA の part 2 以降は `{GROUP_N}` を `N-pK` に置き換え（worktree のパスとエージェント名がそれで決まる）、`{QA_APP_TASKS}` / `{QA_INFRA_TASKS}` にはその part のタスクと担当ファイルだけを入れる。
 
 **QA に Dev を待たせない:** QA implementer に「Dev の実装ができたら」「Dev ブランチを取り込んでから」のような指示を足さない。QA は仕様書だけでテストを書き終えて完了を返し、Dev の実装と合わせるのは STEP C.5（統合検証）でオーケストレーターが行う。2026-10 の notify-hub では、QA が Dev ブランチにファイルができるのを `until git cat-file -e ...; do sleep 15; done` で 10 分ずつ待ち、その間 QA が完了しないためにグループ全体が遅れた。
 
@@ -284,7 +286,7 @@ JSON パース失敗時のフォールバックは reference 参照。
 
 Dev と QA は別 worktree で並行して作業しており、**QA は Dev の実装を見ずにインターフェースを推測してテストを書いている**。そのため、両者を合わせて初めて分かる不一致が高確率で発生する（実例: aria-label の命名違い、React Testing Library の `cleanup` 未登録によるテスト間の DOM 残留、エラーメッセージの句点有無、Dev/QA 双方が同名テストファイルを作成してのコンフリクト）。レビュアーに渡す前に、オーケストレーターが機械的に統合して実テストを回す。
 
-手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査を実行 → 不備は該当 implementer に差し戻し → 検証マージを `reset --hard` で取り消し → 統合結果を PR 説明に書く）は [reference/integration-check.md](reference/integration-check.md) を Read して従う。
+手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査を実行 → 不備は該当 implementer に差し戻し → 検証マージを `reset --hard` で取り消し → 統合結果を PR 説明に書く）は [reference/integration-check.md](reference/integration-check.md) を Read して従う。QA が part に分かれているときは、part ごとの QA worktree に同じ Dev ブランチを検証用にマージして、それぞれ行う（part 同士は担当ファイルが別なので、順番は問わない）。
 
 ---
 
@@ -373,6 +375,7 @@ App QA のシニアレビュアーエージェントを起動（`model="opus"`�
 - **Infra**: `dev/infra-group-N`, `qa/infra-group-N` → 2PR作成、label=`infra`
 - **App**: `dev/app-group-N`, `qa/app-group-N` → 2PR作成、label=`app`
 - **Cross**: 4ブランチすべて → 4PR作成、Infraブランチには`infra,cross`、Appブランチには`app,cross`
+- QA が part に分かれているときは、part 2 以降のブランチ（`qa/{team}-group-N-pK`）も 1 本ずつ PR にする（タイトルに `part K` を入れる）。マージは Dev → QA の各 part の順（[reference/merge-ops.md](reference/merge-ops.md)。どの part も Dev のマージ後に `update-branch` する）
 
 PRタイトル例: 
 - `feat(infra): グループ N Infra Dev タスク実装`
@@ -391,7 +394,7 @@ gh pr create --base "$BASE_BRANCH" --head dev/infra-group-N --title "..." --body
 
 ### STEP F: worktreeクリーンアップ
 
-PR作成後、worktreeを削除（ブランチは保持）：
+PR作成後、worktreeを削除（ブランチは保持）。QA の part 2 以降の worktree（`worktree-qa-{team}-group-N-pK`）も同じく削除し、STEP H では part のブランチも消す：
 
 **Infra / App:**
 ```bash

@@ -1,0 +1,29 @@
+#!/bin/bash
+# tests/codex/run.sh 用の codex スタブ
+#   FAKE_CODEX_LOGIN   login status の終了コード（既定 0）
+#   FAKE_CODEX_ARGS    exec の引数を書き出すファイル（stdin は <ファイル>.stdin）
+#   FAKE_CODEX_ACTION  exec の作業ディレクトリで実行するシェル（レビュアーが worktree を汚す再現）
+#   FAKE_CODEX_REPLY   -o に書く最終回答
+#   FAKE_CODEX_EXIT    exec の終了コード（既定 0）
+#   FAKE_CODEX_SLEEP   exec の所要秒数（既定 0）
+case "${1:-}" in
+  --version) echo "codex-cli 0.0.0-test"; exit 0 ;;
+  login) exit "${FAKE_CODEX_LOGIN:-0}" ;;
+  exec) ;;
+  *) exit 2 ;;
+esac
+shift
+[ -n "${FAKE_CODEX_ARGS:-}" ] && printf '%s ' "$@" > "$FAKE_CODEX_ARGS"
+cwd="." last=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -C) cwd="$2"; shift ;;
+    -o) last="$2"; shift ;;
+  esac
+  shift
+done
+if [ -n "${FAKE_CODEX_ARGS:-}" ]; then cat > "$FAKE_CODEX_ARGS.stdin"; else cat > /dev/null; fi
+sleep "${FAKE_CODEX_SLEEP:-0}"
+(cd "$cwd" && eval "${FAKE_CODEX_ACTION:-:}")
+[ -n "$last" ] && printf '%s\n' "${FAKE_CODEX_REPLY:-}" > "$last"
+exit "${FAKE_CODEX_EXIT:-0}"

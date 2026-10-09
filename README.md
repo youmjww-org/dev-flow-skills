@@ -2,6 +2,8 @@
 
 Claude Code 用の AI 駆動開発フロースキルです。要件定義 → ドキュメント生成 → 整合性チェック → 並列実装 → テスト → 準拠チェック までを一貫したフローとして自動化し、ドキュメントを「唯一の正解」として扱うことで「何を作るか」の認識齟齬を実装前に解消します。
 
+書くのは Claude、レビューは [Codex CLI](https://github.com/openai/codex) という**2 系統のモデルの併用**です。仕様書・実装を書くのは Claude、それをレビューするのは Codex（使えなければ Claude）で、書き手と違うモデルに見させて見落としが重ならないようにしています（「レビュアーは Codex で動かす」）。
+
 ---
 
 ## クイックスタート
@@ -11,7 +13,14 @@ git clone git@github.com:youmjww-org/dev-flow-skills.git ~/dev-flow-skills
 bash ~/dev-flow-skills/setup.sh
 ```
 
-`~/.claude/skills/` に各スキルへのシンボリックリンクが作成され、`~/.claude/settings.json` に dev-flow の hooks が登録されます（登録前に `settings.json.bak.*` としてバックアップを取ります。hooks が不要なら `setup.sh --no-hooks`）。あとは Claude Code で次のように起動します。
+`~/.claude/skills/` に各スキルへのシンボリックリンクが作成され、`~/.claude/settings.json` に dev-flow の hooks が登録されます（登録前に `settings.json.bak.*` としてバックアップを取ります。hooks が不要なら `setup.sh --no-hooks`）。レビューを Codex で動かすには、Codex CLI を入れてログインしておきます（無くても動きます。そのときはレビューも Claude が行います）。
+
+```bash
+npm install -g @openai/codex
+codex login
+```
+
+あとは Claude Code で次のように起動します。
 
 ```
 /dev-flow 新機能を実装したい
@@ -33,10 +42,10 @@ bash ~/dev-flow-skills/setup.sh
 flowchart TD
     Start(["/dev-flow タスク説明"])
     S1["1. requirements<br/>要件定義"]
-    S2["2. spec<br/>仕様書生成"]
+    S2["2. spec<br/>仕様書生成（Claude）<br/>→ レビュー（Codex）"]
     S3["3. consistency<br/>整合性チェック"]
     S3R["plan_repair<br/>計画修正"]
-    S4["4. implementation<br/>並列実装"]
+    S4["4. implementation<br/>並列実装（Claude）<br/>→ レビュー（Codex）"]
     S5["5. test<br/>テスト実行"]
     S6["6. compliance<br/>準拠チェック"]
     Done([完了])
@@ -45,10 +54,13 @@ flowchart TD
     S4 -. 計画誤り検出 .-> S3R -.-> S4
 
     S3R:::optional
+    S2:::codex
+    S4:::codex
     classDef optional stroke-dasharray: 5 5
+    classDef codex stroke:#10a37f,stroke-width:2px
 ```
 
-> 破線の `plan_repair` は implementation 中に計画誤りが見つかったときだけ通る内部サイクルです。incremental モードでは consistency の先頭で Impact Analysis（STEP 0）を実行します。
+> 緑の枠のステージは、Claude が書いたものを Codex がレビューします（Codex が使えなければ Claude がレビュー）。破線の `plan_repair` は implementation 中に計画誤りが見つかったときだけ通る内部サイクルです。incremental モードでは consistency の先頭で Impact Analysis（STEP 0）を実行します。
 
 ステージ名は `--from=` の値・`state.json.next_stage`・エージェント名（`stage-<stage>-agent`）・`task_checklist.md` の進捗行で共通です。
 
@@ -181,17 +193,24 @@ Agent Teams（実験的機能、`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`）には*
 
 ```mermaid
 flowchart LR
-    PSA([stage-spec-agent<br/>Haiku])
-    PSA --> TSW["test-spec-writer<br/>Sonnet<br/>テスト定義書"]
-    PSA --> ASW["api-spec-writer<br/>Sonnet<br/>API仕様書"]
-    PSA --> ISW["infra-spec-writer<br/>Sonnet<br/>インフラ仕様書"]
-    PSA --> MW["mock-writer<br/>Sonnet<br/>UIモック"]
-    TSW -. 完了 .-> TSR["test-spec-reviewer"]
-    ASW -. 完了 .-> ASR["api-spec-reviewer"]
-    ISW -. 完了 .-> ISR["infra-spec-reviewer"]
-    MW -. 完了 .-> MR["mock-reviewer"]
+    PSA(["spec ステージ<br/>quality: オーケストレーター / cost: stage-spec-agent"])
+    PSA --> TSW["test-spec-writer<br/>Claude<br/>テスト定義書"]
+    PSA --> ASW["api-spec-writer<br/>Claude<br/>API仕様書"]
+    PSA --> ISW["infra-spec-writer<br/>Claude<br/>インフラ仕様書"]
+    PSA --> MW["mock-writer<br/>Claude<br/>UIモック"]
+    TSW -. 完了 .-> TSR["test-spec-reviewer<br/>Codex（read-only）"]
+    ASW -. 完了 .-> ASR["api-spec-reviewer<br/>Codex（read-only）"]
+    ISW -. 完了 .-> ISR["infra-spec-reviewer<br/>Codex（read-only）"]
+    MW -. 完了 .-> MR["mock-reviewer<br/>Codex（read-only）"]
     TSR -. changes_requested → SendMessage で再開 .-> TSW
+    TSR:::codex
+    ASR:::codex
+    ISR:::codex
+    MR:::codex
+    classDef codex stroke:#10a37f,stroke-width:2px
 ```
+
+writer は Claude（quality: Opus / cost: Sonnet）、reviewer は Codex です。Codex が使えないときは reviewer も Claude で動きます。
 
 #### 自動モデル昇格（実装・レビュー、cost プロファイル）
 
@@ -288,14 +307,14 @@ flowchart TD
 
     subgraph G1["グループ 1 — Infra / depends_on: [] / 即時実行"]
         direction LR
-        G1Dev["dev/infra-group-1<br/>Haiku→Sonnet"]
-        G1QA["qa/infra-group-1<br/>Haiku→Sonnet"]
+        G1Dev["dev/infra-group-1"]
+        G1QA["qa/infra-group-1"]
     end
 
     subgraph G2["グループ 2 — App / depends_on: [] / 即時実行"]
         direction LR
-        G2Dev["dev/app-group-2<br/>Haiku→Sonnet"]
-        G2QA["qa/app-group-2<br/>Haiku→Sonnet"]
+        G2Dev["dev/app-group-2"]
+        G2QA["qa/app-group-2"]
     end
 
     subgraph G3["グループ 3 — Cross / depends_on: [group-1] / 順次"]
@@ -313,6 +332,8 @@ flowchart TD
     G2 --> Merge
     G3 --> Merge
 ```
+
+各グループの中は、下の「レビュアーは Codex で動かす」の図のとおり、Claude が実装して Codex がレビューします。
 
 ### 実装の信頼性
 
@@ -355,6 +376,47 @@ implementation 中にエージェントが「計画誤り」を検出した場�
 - **Dev レビュアー（懐疑的観点）**: セキュリティホール・新人可読性・アーキテクチャ
 - **QA レビュアー（素朴質問観点）**: 理解できない点・テストの意図が不明な点のみ指摘
 
+#### レビュアーは Codex で動かす
+
+レビュアー（spec の reviewer 4 種と implementation の Dev / QA レビュー）は、[Codex CLI](https://github.com/openai/codex) にログイン済みなら `codex exec` で動かし、そうでなければ Claude のサブエージェントで動かします（`--reviewer=claude` で常に Claude）。書き手（Claude）と系統の違うモデルに見させて見落としが重ならないようにするのと、Opus を往復ごとに起動していたレビューのトークンを減らすのが目的です。
+
+1 グループの中の流れ（App グループの例。Codex が使えないとき・`--reviewer=claude` のときは、レビューも最初から Claude で動きます）:
+
+```mermaid
+flowchart TD
+    subgraph Impl["実装（Claude。worktree を分けて並列）"]
+        direction LR
+        Dev["Dev implementer<br/>dev/app-group-N"]
+        QA["QA implementer<br/>qa/app-group-N"]
+    end
+    IC["統合検証<br/>Dev を QA worktree に検証マージしてテスト"]
+    subgraph Rev["レビュー（Codex。Dev と QA を同時に）"]
+        direction LR
+        DR["Dev レビュー<br/>懐疑的観点"]
+        QR["QA レビュー<br/>素朴質問観点"]
+    end
+    RevC["Claude でレビュー"]
+    Judge{"blocker / major<br/>はある？"}
+    Fix["同じ implementer が修正<br/>最大 5 回"]
+    PR(["PR 作成 → 条件付き自動マージ"])
+
+    Impl --> IC --> Rev --> Judge
+    Rev -. "失敗・タイムアウト（そのレビューだけ）" .-> RevC --> Judge
+    Judge -->|"ある（findings を JSON のまま渡す）"| Fix
+    Fix -->|再レビュー| Rev
+    Judge -->|ない| PR
+    Rev:::codex
+    classDef codex stroke:#10a37f,stroke-width:2px
+```
+
+- `dev-flow/codex/review.sh` が、レビュアープロンプトに Codex 向けの読み替え（`codex/preamble-*.md`）を付け、出力を JSON スキーマ（`codex/schema-*.json`）で固定して起動します。spec の reviewer は read-only、implementation のレビューは worktree の中だけ書ける sandbox（テスト・lint を実行できる）で動きます
+- sandbox では `.git` に書けないので、ミューテーションの再現で壊したファイルは `cp` で戻させ、戻し忘れは `review.sh wait` が `git checkout` で戻して `restored_files` に記録します
+- 実装・writer・test runner は codex にしません。dev-flow の hook（テストの改変禁止・テストコードのリントなど）は Claude Code の Write / Edit にしか効かないためです
+- codex が失敗・タイムアウトしたら、そのレビューだけ Claude でやり直します。詳しくは `dev-flow/reference/codex-review.md`
+- モデルは Codex の既定（2026-10 時点で GPT-6.1-Sol）を推論 `high` で使います。`DEV_FLOW_CODEX_MODEL` / `DEV_FLOW_CODEX_EFFORT` で変えられます
+
+導入前に、sandbox プロジェクトの同じ差分（PATCH エンドポイント追加の Dev 実装）を同じプロンプトで比べました。Codex は、元の run で Opus が major として挙げた 2 件（関数の複雑度の超過・SQL の重複）を major として挙げて差し戻しました。同じ差分を Opus に 2 回レビューさせると、どちらも承認し、この 2 件は見逃すか minor に下げていました。所要時間は Codex が約 5 分、Opus が約 1 分です。細かい設計上の気づきは Opus のほうが多く出しました。
+
 #### memory 注入
 
 過去のレビューで3回以上繰り返された指摘パターンや、人間によるマージ後修正を Claude memory に保存します。次回フロー実行時、エージェント起動前にそのパターンをプロンプトに注入することで、同じ指摘の再発を防ぎます。
@@ -375,7 +437,9 @@ dev-flow-skills/
 │   │   ├── cost-mode.md            # cost でのステージエージェント起動（対応表・起動テンプレート・Plan Repair）
 │   │   ├── hooks-and-merge.md      # hook 一覧・PR マージの分担・自動マージ条件
 │   │   ├── help.md / manual.md     # --help / --man の表示内容
+│   │   ├── codex-review.md         # レビュアーを Codex で動かす手順（エンジンの選び方・起動と待ち方・失敗時）
 │   │   └── state-schema.md ほか    # state.json スキーマ・ハング対策・エスカレーション・エラー対処
+│   ├── codex/                      # レビュアーを Codex CLI で動かすラッパー（review.sh・前置き・出力スキーマ）
 │   └── hooks/                      # 決定的検証（起動前チェック・状態同期・PR マージガード）
 ├── dev-flow-bootstrap/             # 0. bootstrap（既存プロジェクト導入・1 回だけ）
 │   ├── SKILL.md
@@ -435,11 +499,11 @@ dev-flow-skills/
 | ステージの実行者 | 全ステージ | オーケストレーターが直接実行 | `stage-*-agent`（requirements / compliance / bootstrap は Opus、他は Haiku） |
 | bootstrap | dev-flow-bootstrap | 子も Opus | 棚卸し・仕様書逆生成の子: Sonnet |
 | requirements | dev-flow-requirements | Opus | Opus |
-| spec | dev-flow-spec | 子（writer / reviewer）: Opus | 子: Sonnet |
+| spec | dev-flow-spec | writer: Opus / reviewer: Codex（使えなければ Opus） | writer: Sonnet / reviewer: Codex（使えなければ Sonnet） |
 | consistency STEP 0 Impact Analysis | dev-flow-consistency | Opus | Sonnet |
 | consistency | dev-flow-consistency | 子: Opus | 整合性チェック子: Opus / writer 子: Sonnet |
 | implementation 実装 | dev-flow-implementation | Opus（昇格なし） | Sonnet → Opus（自動昇格） |
-| implementation レビュー | dev-flow-implementation | Opus。Dev と QA を同時に | Opus。Dev → QA の直列 |
+| implementation レビュー | dev-flow-implementation | Codex（使えなければ Opus）。Dev と QA を同時に | Codex（Dev と QA を同時に。使えなければ Opus で Dev → QA の直列） |
 | test | dev-flow-test | Opus（最大 5 回） | Haiku → Sonnet（自動昇格） |
 | compliance | dev-flow-compliance | Opus | Opus |
 

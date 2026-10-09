@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer", "target", "status", "issues"],
+  "properties": {
+    "reviewer": {"type": "string"},
+    "target": {"type": "string"},
+    "status": {"type": "string", "enum": ["approved", "changes_requested"]},
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["location", "problem", "fix"],
+        "properties": {
+          "location": {"type": "string"},
+          "problem": {"type": "string"},
+          "fix": {"type": "string"}
+        }
+      }
+    }
+  }
+}

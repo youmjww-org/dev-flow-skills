@@ -153,6 +153,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 - **TASK**: `--` で始まらない部分
 - **KIND**: `--kind=`（`feature` / `change` / `fix` / `refactor`）。未指定なら STEP 1.5 で決める
 - **PROFILE**: `--profile=`（`quality` / `cost`）。未指定なら state.json の `profile`（進行中 run の再開時）、それも無ければ `quality`
+- **REVIEWER**: `--reviewer=`（`auto` / `claude`）。レビュアー（spec の reviewer・implementation の Dev / QA レビュー）を codex で動かすか。`auto`（既定）は codex が使えれば codex、使えなければ Claude。`claude` は常に Claude。指定されたら `state.json.reviewer_engine` に書く（PROFILE と同じく run の途中でも書き換えてよい）。手順は `/home/proxmox/.claude/skills/dev-flow/reference/codex-review.md`
 - **BOOTSTRAP**: `--bootstrap` があれば STEP 1.5 の判定を飛ばして bootstrap を実行する
 - **FROM**: `--from=`（`requirements` / `spec` / `consistency` / `implementation` / `test` / `compliance`）。`requirements` 以外は state.json が必要。`plan_repair` は指定できない
 - **DRY_RUN**: `--dry-run` があれば何も実行せず構成だけ検証して終える
@@ -174,7 +175,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 
 ### STEP 1.5: 変更種別と開発モードの判定
 
-`--from` 指定時、または state.json の `next_stage` が `completed` 以外（進行中）のときは飛ばす。ただし `--profile=` が明示されていて state.json と違えば `profile` だけ書き換える。
+`--from` 指定時、または state.json の `next_stage` が `completed` 以外（進行中）のときは飛ばす。ただし `--profile=` / `--reviewer=` が明示されていて state.json と違えば `profile` / `reviewer_engine` だけ書き換える。
 
 1. 「実装コードの有無」が `0` → `kind = "feature"`, `mode = "full"`（KIND が `feature` 以外なら「実装コードが無いので feature として扱う」と伝える）
 2. `1` 以上のとき：
@@ -186,7 +187,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
    | あり | あり | 導入済み。次へ |
 
    KIND が未指定なら AskUserQuestion で選ばせる（TASK から推測できれば先頭に「(推奨)」）: 新機能を追加する → `feature` / 既存機能の要件を変更する → `change` / 不具合を直す → `fix` / 挙動を変えずに内部を改善する → `refactor`。`mode = "incremental"`、`baseline_commit` は state.json にあればその値、無ければ `git rev-parse HEAD`
-3. state.json への書き込み: 無ければ requirements（または bootstrap）で作るときに `kind` / `task` / `profile` / `mode` / `baseline_commit` を入れる。あれば「状態管理」のとおり新しい run として書き換える
+3. state.json への書き込み: 無ければ requirements（または bootstrap）で作るときに `kind` / `task` / `profile` / `mode` / `baseline_commit`（`--reviewer=` があれば `reviewer_engine` も）を入れる。あれば「状態管理」のとおり新しい run として書き換える
 
 ### STEP 2: 次のステージを決める
 

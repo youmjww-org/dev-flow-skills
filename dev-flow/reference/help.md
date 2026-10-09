@@ -14,6 +14,10 @@ dev-flow — 要件定義から実装・テスト・準拠チェックまでを�
   --profile=quality|cost
                      quality（既定）: 速さと正確さ優先。全員 Opus、オーケストレーターが直接実行
                      cost: コスト重視。ステージごとに Haiku の管理役、Sonnet から始めて昇格
+  --reviewer=auto|claude
+                     レビュアー（仕様書・実装のレビュー）を動かすもの
+                     auto（既定）: codex が使えれば Codex CLI、使えなければ Claude
+                     claude: 常に Claude
   --from=<stage>     指定ステージから再開（requirements / spec / consistency /
                      implementation / test / compliance）。requirements 以外は state.json が必要
   --bootstrap        既存コードから as-is ドキュメントを逆生成する（導入時に 1 回）

@@ -119,6 +119,8 @@ writer の完了通知を受け取るたびに、対応する reviewer を起動
 
 reviewer は最終回答として `{"status":"approved"|"changes_requested","issues":[...]}` の JSON を返します。
 
+**reviewer のエンジン（codex 優先）:** 最初の reviewer を起動する前に `state.json.reviewer_engine`（無ければ `auto`）を見る。`auto` なら `${CLAUDE_SKILL_DIR}/../dev-flow/codex/review.sh available` を 1 回実行し、0 なら reviewer を **Codex CLI で動かす**（`claude`、または `available` が 3 なら上の表のとおり Claude のサブエージェント）。起動・待ち方・失敗時に Claude へ切り替える手順は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/codex-review.md` を Read して従う（種別は `spec`、cwd はメインの作業ディレクトリ、出力は `doc/process/reviews/spec-{reviewer name}-r{回数}.json`）。プロンプトは上の表のファイルを置換したもの、受け取った JSON の扱い（1c の修正ループ）は Claude のときと同じ。
+
 ### 1c. 修正ループ
 
 | reviewer の結果 | 動作 |

@@ -30,3 +30,6 @@ jobs:
 
       - name: codex レビューのラッパーのテスト（codex はスタブ）
         run: bash tests/codex/run.sh
+
+      - name: run 集計スクリプトのテスト
+        run: python3 tests/metrics/test_flow_metrics.py

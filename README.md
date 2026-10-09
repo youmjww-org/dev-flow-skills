@@ -484,7 +484,10 @@ dev-flow-skills/
 ├── dev-flow-compliance/            # 6. compliance
 │   └── SKILL.md                    # カバレッジ行列検証・準拠チェック
 ├── tests/
-│   └── hooks/                      # hooks のスモークテスト（bash tests/hooks/run.sh）
+│   ├── hooks/                      # hooks のスモークテスト（bash tests/hooks/run.sh）
+│   └── metrics/                    # flow-metrics.py のテスト
+├── tools/
+│   └── flow-metrics.py             # run の所要時間をステージ・役割・グループごとに集計する
 ├── evals/                          # スキル本体の評価（fixture + 採点器 + claude -p ランナー）。evals/README.md 参照
 └── setup.sh                        # シンボリックリンク作成・hooks 登録スクリプト
 ```
@@ -533,6 +536,19 @@ dev-flow-skills/
     │   └── implementation-*.md     # 実装で決めた設計判断（ADR 形式）
     └── escalation_*.md             # エスカレーション報告（発生時のみ）
 ```
+
+### run の所要時間を測る
+
+スキルを変えたときに効果を数字で比べるため、終わった run を集計できます。読むのは `state.json` の `harness.stage_history`・`~/.claude/projects/` のサブエージェントの transcript・`doc/process/reviews/*.json` だけで、プロンプトやツールの引数は出しません。
+
+```bash
+python3 tools/flow-metrics.py ~/project/dev-flow-sandbox-api          # Markdown の表
+python3 tools/flow-metrics.py ~/project/dev-flow-sandbox-api --json   # 比較用に保存する
+```
+
+出すもの: 経過時間・エージェントの作業時間・人間待ち（ステージ実行の合間）と止まった回数、ステージごとの時間、役割（stage / implementer-dev / implementer-qa / reviewer / writer / checker / test-runner）ごとの数・合計・最長・出力トークン、グループごとの役割別の最長時間、レビューごとの往復回数とエンジン。
+
+`stage_history` は run ごとに作り直されるので、集計できるのは最後の run だけです。比べたい run は終わるたびに `--json` を保存してください。codex のレビューはサブエージェントではないので、時間には入らず往復回数だけ数えます。
 
 ---
 

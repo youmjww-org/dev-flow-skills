@@ -1,0 +1,6 @@
++++ b/tests/test_cli.py
+-    def test_tc043_words_are_counted_by_exact_match(self) -> None:
++    def test_tc043_words_are_counted_by_lowercased_exact_match(self) -> None:
++++ b/tests/app.test.ts
+-  it("TC-012 タグで絞り込める", async () => {
++  it("TC-012 タグ（小文字）で絞り込める", async () => {

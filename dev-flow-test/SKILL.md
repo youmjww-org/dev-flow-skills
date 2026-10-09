@@ -33,7 +33,7 @@ git pull --ff-only
 ${CLAUDE_SKILL_DIR}/../dev-flow/hooks/verify-remote-state.sh
 ```
 
-- `summary: NG 0` でなければテストを始めない。`git pull --ff-only` が失敗する（ローカルに未 push のコミットがある等）なら人間に報告して止める
+- `summary: NG 0` でなければテストを始めない。ローカルに未 push のコミットがあり、それが `doc/process/` だけの変更（state.json・チェックリスト・flow.log などフローの記録）なら `git push` してから続ける（`git log origin/$BASE..HEAD --name-only` で確かめる）。それ以外の未 push コミットがある、または `git pull --ff-only` が失敗するなら人間に報告して止める
 - テストランナーには、この出力と `git rev-parse --short HEAD` を渡す。最終報告の先頭に「テスト対象: {branch}@{短いハッシュ}（origin と同期済み）」と書く
 
 ## STEP 0.7: プロファイルによる分岐

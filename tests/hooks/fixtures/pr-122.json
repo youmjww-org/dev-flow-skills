@@ -1,0 +1,17 @@
+{
+  "number": 122,
+  "state": "MERGED",
+  "isDraft": false,
+  "baseRefName": "feature/xxx",
+  "headRefName": "dev/group-1",
+  "mergeable": "MERGEABLE",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "name": "ci",
+      "status": "COMPLETED",
+      "conclusion": "FAILURE"
+    }
+  ],
+  "url": "https://github.com/o/r/pull/122"
+}

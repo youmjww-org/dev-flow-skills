@@ -67,6 +67,8 @@ reviewer にも `{KIND}` を渡す（差分更新モードでは既存 ID の保
 
 **差分更新モード（kind = `change` / `fix`）の要点**: writer は既存ファイルを読み、既存 ID を振り直さず、変更のあった REQ に紐づく項目だけ追加・修正して `status: added|modified` を付ける。詳細は各 writer プロンプトに記載。
 
+`kind = feature` でも、テスト定義書・API 仕様書がすでにある（bootstrap の as-is ドキュメントや前回の run の成果がある）ときは、全文生成ではなく差分更新モードで書く（`{KIND}` には `change` を渡し、`{CHANGED_REQ_IDS}` に今回追加・変更した REQ を入れる）。全文を書き直すと TC / API の ID が振り直され、既存テストや `implemented_by` との対応が切れる（2026-10 の API sandbox の検証で、bootstrap 後の feature が as-is のテスト定義書を全文書き直し、既存の振る舞い 29 件のテストとの対応が切れた）。人間に「全文書き直してよいか」とは聞かない
+
 **テスト定義書の frontmatter テンプレート（test-spec-writer に指示すること）:**
 
 ```markdown
@@ -139,6 +141,8 @@ reviewer は最終回答として `{"status":"approved"|"changes_requested","iss
 ---
 
 ## STEP 2: 人間レビュー
+
+`kind = "fix"` では人間レビューを行わない。すべての reviewer が `approved` なら、そのまま「出力」へ進む（修正ループの上限に達して指摘が残ったときだけ、残りの指摘を AskUserQuestion で人間に出す）。`feature` / `change` では以下を行う。
 
 AskUserQuestion ツールで以下を同時に提示してレビューを依頼（`change` / `fix` では `status: added|modified` の項目と `git diff` の要約を先に示し、変更箇所に絞ってレビューしてもらう）：
 

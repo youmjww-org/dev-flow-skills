@@ -613,6 +613,13 @@ assert_eq "テスト関数の移動（削除+同内容の追加）は allow" "$(
 out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 112 --merge')")"
 assert_eq "pytest.mark.skip / it.skip は deny" "$(decision "$out")" "deny"
 assert_contains "複数言語のヒットを提示" "$(reason "$out")" "it.skip"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 118 --merge')")"
+assert_eq "同じ TC-ID のテストの名前変更は allow" "$(decision "$out")" "allow"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 119 --merge')")"
+assert_eq "TC-ID が違うテストへの置き換えは deny" "$(decision "$out")" "deny"
+assert_contains "消えた TC のテストを提示" "$(reason "$out")" "test_tc043"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------
@@ -687,6 +694,9 @@ assert_contains "--expect-merged で未マージは NG" "$out" "NG   PR #101: st
 assert_contains "マージ済みは OK" "$out" "OK   PR #120: state=MERGED"
 out="$(vr 103)"
 assert_contains "CI 失敗は NG（チェック名付き）" "$out" "失敗: ci=FAILURE"
+out="$(vr --expect-merged 122)"
+assert_contains "マージ済み PR の CI 失敗は INFO（人間がマージした）" "$out" "INFO PR #122: state=MERGED"
+assert_contains "  NG には数えない" "$out" "summary: NG 0"
 out="$(vr 121)"
 assert_contains "CI 実行中は NG（推測で書かせない）" "$out" "未完了: ci"
 ( cd "$vr_root/other" && git fetch -q origin && git checkout -q feature/x && echo b > b && git add b && git commit -qm b && git push -q origin feature/x 2>/dev/null )
@@ -732,6 +742,67 @@ assert_contains "仕様書から漏れた REQ を通知" "$(reason "$out")" "仕
 sed -i.bak 's/covers: \[REQ-004\]/covers: [REQ-004, REQ-005]/' "$dir/doc/test-spec/auth.md"
 out="$(run_hook doc-validate.sh "$dir" "$(write_json doc/test-spec/auth.md)")"
 assert_not_contains "全 REQ をカバーすれば WARN は出ない" "$(reason "$out")" "covers にも無い REQ"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
+# state-write-guard.sh
+# ---------------------------------------------------------------------------
+section "state-write-guard.sh"
+dir="$(new_project)"
+write_state "$dir" implementation
+for c in 'jq ".next_stage=\"test\"" doc/process/state.json > /tmp/s.json && mv /tmp/s.json doc/process/state.json' \
+         'echo "{}" > doc/process/state.json' \
+         'jq . x.json | tee doc/process/state.json' \
+         "sed -i 's/a/b/' doc/process/state.json" \
+         'cp /tmp/s.json doc/process/state.json' \
+         "python3 -c 'import json; json.dump({}, open(\"doc/process/state.json\", \"w\"))'" \
+         "python3 - <<'EOF'
+import json
+p='doc/process/state.json'
+d=json.load(open(p,encoding='utf-8'))
+d['next_stage']='spec'
+open(p,'w',encoding='utf-8').write(json.dumps(d))
+EOF"; do
+  out="$(run_hook state-write-guard.sh "$dir" "$(bash_json "$c")")"
+  assert_eq "書き込みは deny: ${c:0:50}" "$(decision "$out")" "deny"
+done
+for c in 'jq -r .next_stage doc/process/state.json' \
+         'cat doc/process/state.json > /tmp/backup.json' \
+         'cp doc/process/state.json /tmp/backup.json' \
+         'git add doc/process/state.json && git commit -m x' \
+         "git commit -F - <<'EOF'
+state.json を jq > state.json で書いていたのを直す
+EOF" \
+         'bash ~/.claude/skills/dev-flow/hooks/mark-group-done.sh 1 12 13' \
+         "python3 -c 'import json; print(json.load(open(\"doc/process/state.json\"))[\"next_stage\"])'" \
+         "python3 tests/check.py && git commit -qm \"state.json を p='doc/process/state.json' → open(p,'w') で書くのを止める\""; do
+  out="$(run_hook state-write-guard.sh "$dir" "$(bash_json "$c")")"
+  assert_empty "読むだけ・対象外は素通り: ${c:0:50}" "$out"
+done
+rm -f "$dir/doc/process/state.json"
+out="$(run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')")"
+assert_empty "state.json が無いプロジェクトでは何もしない" "$out"
+rm -rf "$dir"
+
+# flow.log は git で追跡しない（新しく作るとき doc/process/.gitignore に足す）
+dir="$(new_project)"; git -C "$dir" init -q
+write_state "$dir" implementation
+run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
+assert_eq "git 管理下で flow.log を作ると .gitignore に足す" "$(cat "$dir/doc/process/.gitignore" 2>/dev/null)" "flow.log"
+run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
+assert_eq "  2 回目は足さない" "$(grep -c . "$dir/doc/process/.gitignore")" "1"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
+# doc-validate: _ で始まる補助ファイル
+# ---------------------------------------------------------------------------
+section "doc-validate: 補助ファイル（_glossary.md 等）"
+dir="$(new_project)"; cp -R "$SAMPLE/." "$dir/"
+printf '# 用語集\n\n| 用語 | 定義 | 備考 |\n|---|---|---|\n| 単語 | 空白で区切られた文字列 | REQ-002 |\n' > "$dir/doc/requirements/_glossary.md"
+out="$(run_hook doc-validate.sh "$dir" "$(write_json doc/requirements/_glossary.md)")"
+assert_eq "frontmatter の無い _glossary.md は差し戻さない" "$(hook_rc)" "0"
+out="$(python3 "$HOOKS/doc-validate.py" --project-dir "$dir" --all)"
+assert_not_contains "--all でも _glossary.md を検証しない" "$out" "_glossary.md"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------

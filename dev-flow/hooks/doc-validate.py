@@ -2,7 +2,7 @@
 """dev-flow 成果物のスキーマ検証。
 
 対象: doc/requirements/*.md, doc/test-spec/*.md, doc/api-spec/*.md, doc/infra-spec/*.md,
-      doc/process/task_checklist.md
+      doc/process/task_checklist.md（ファイル名が _ で始まる補助ファイル（_glossary.md 等）は対象外）
 外部依存なし（frontmatter は dev-flow が使う YAML のサブセットだけを解析する）。
 
 使い方:
@@ -414,6 +414,8 @@ def main():
         if not os.path.exists(p):
             rep.error(os.path.relpath(p, project_dir), "ファイルがありません")
             continue
+        if os.path.basename(p).startswith("_"):
+            continue  # _glossary.md 等の補助ファイルは frontmatter を持たない（ID を持つ文書ではない）
         if os.path.basename(p) == "task_checklist.md":
             validate_checklist(p, project_dir, rep)
         else:

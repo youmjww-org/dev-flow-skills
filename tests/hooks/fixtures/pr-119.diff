@@ -1,0 +1,3 @@
++++ b/tests/test_cli.py
+-    def test_tc043_words_are_counted_by_exact_match(self) -> None:
++    def test_tc044_top_words_handles_empty(self) -> None:

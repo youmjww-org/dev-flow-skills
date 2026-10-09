@@ -36,7 +36,7 @@
 | kind | 用途 | 通るステージ | 最初のステージ |
 |---|---|---|---|
 | `feature` | 新機能 | requirements → spec → consistency → implementation → test → compliance | requirements |
-| `change` | 既存機能の要件変更 | 全ステージ（requirements は修正モード、spec は差分更新、consistency は Impact Analysis、implementation は影響グループのみ） | requirements |
+| `change` | 既存機能の要件変更 | 全ステージ（requirements は修正モード、spec は差分更新、consistency は Impact Analysis、implementation は影響グループのみ）。変更 REQ が 3 件以下なら「小さい change」として consistency・compliance が変更箇所だけを見る（`state.json.change_scale`） | requirements |
 | `fix` | 不具合修正（要件は変えない） | spec（再現 TC 追加のみ）→ consistency（lite）→ implementation（1 グループ）→ test → compliance | spec |
 | `refactor` | 挙動を変えない内部改善 | consistency（lite）→ implementation（1 グループ）→ test → compliance（全 ID で挙動不変を確認） | consistency |
 

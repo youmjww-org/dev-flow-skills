@@ -20,7 +20,7 @@ dev-flow は 2 つの実行プロファイルを持つ。**既定は `quality`**
 | consistency の整合性チェック | dev-flow-consistency | opus | opus |
 | checklist-writer / spec-cache-writer | dev-flow-consistency | opus | sonnet |
 | conventions-verifier | dev-flow-implementation | opus | sonnet |
-| Dev / QA implementer | dev-flow-implementation | **opus で開始・昇格ラダー無し**（修正は同じ implementer に最大 5 回） | sonnet で開始 → 設計レベルの指摘で opus に昇格（`task_complexity` で初期値を変更可） |
+| Dev / QA implementer | dev-flow-implementation | **opus で開始・昇格ラダー無し**（修正は同じ implementer に最大 3 回。再レビューは前回の指摘と修正差分だけを見る） | sonnet で開始 → 設計レベルの指摘で opus に昇格（`task_complexity` で初期値を変更可） |
 | Dev / QA レビュアー | dev-flow-implementation | **codex**（使えなければ opus）。**Dev レビューと QA レビューを同時に起動する** | **codex**（Dev と QA を同時に。使えなければ opus で Dev → QA の順に直列） |
 | test runner | dev-flow-test | **opus 1 本で最大 5 回**（連続無進捗 2 回で打ち切り） | haiku 最大 2 回 → sonnet 最大 3 回 |
 | compliance の準拠チェック | dev-flow-compliance | opus | opus |

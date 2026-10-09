@@ -19,6 +19,12 @@ disable-model-invocation: true
 
 ## STEP 1: 要件定義（対話）
 
+**質問はまとめて出す。** 人間の回答待ちは 1 回ごとに数分〜数十分かかり、フロー全体の待ち時間の大半を占める（2026-10 の notify-hub では、dev-flow の経過時間の 3 割強が人間の入力待ちだった）。次のとおりにする：
+- 聞きたいことは先に洗い出し、AskUserQuestion 1 回に最大 4 問まで並べて出す。1 問ずつ往復しない
+- 選択肢を出せるものは選択肢にし、推奨を先頭に「(推奨)」付きで置く。人間は推奨を選ぶだけで済む
+- 要件定義書・既存コード・`state.json` から決まることは聞かない（技術スタックはマニフェストから、GUI / API の有無は要件の文面から決める）
+- IS_GUI / IS_API / IS_E2E と技術スタックで確かめたいことは、機能の質問と同じ AskUserQuestion にまとめる
+
 ### 1a. 既存要件定義書の検索
 
 Bash ツールで `doc/requirements/` 配下の `.md` ファイルを列挙します：
@@ -224,4 +230,4 @@ AskUserQuestion ツールを使用してブロッキングレビューを行い�
      "from": "requirements"
    }
    ```
-3. 人間に「requirements 完了。要件定義書を確認後、`/dev-flow` を実行して spec（仕様書生成）に進んでください」と通知
+3. quality（オーケストレーターが直接実行）では、STEP 2 で人間が承認しているので止まらずに spec に進む（`dev-flow/SKILL.md` STEP 5。人間に `/dev-flow` を打ち直させない）。cost（stage-requirements-agent）では人間に「requirements 完了。要件定義書を確認後、`/dev-flow` を実行して spec（仕様書生成）に進んでください」と通知する

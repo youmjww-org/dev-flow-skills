@@ -28,9 +28,15 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 3. 依存サーバーの冷間起動直後（dev サーバー・DB を起動した直後に実行）
 実戦では E2E のレビュアーがこの手順でレース条件と strict mode violation を再現して報告し、PR マージ後の test ステージまで見つからないはずの不具合を止めた。実行できない事情（環境が無い等）があれば `findings` に `rule: "review/not-executed"`（info）で理由を書く。
 
-**ミューテーション結果の再現:** implementer の完了 JSON の `result.mutation` から 1〜2 件を選び、同じ壊し方で実装を壊してテストが落ちることを確かめる（確かめたら `git checkout -- <file>` で必ず元に戻す。worktree を汚したまま終わらない）。`result.mutation` が無い、`killed: false` が残っている、または再現してもテストが落ちなければ `test/mutation-checked`（major）。
+**ミューテーション結果の再現:** implementer の完了 JSON の `result.mutation` から 1 件を選び（認可・入力検証など影響の大きい分岐を優先）、同じ壊し方で実装を壊してテストが落ちることを確かめる（確かめたら `git checkout -- <file>` で必ず元に戻す。worktree を汚したまま終わらない）。テストを追加・変更したのに `result.mutation` が無い、`killed: false` が残っている、または再現してもテストが落ちなければ `test/mutation-checked`（major）。件数が 5 件以下であることは指摘しない（上限を決めて時間を抑えている）。
 
-**再レビューのとき:** 前回の `findings` と implementer の `result.review_responses` が渡される。前回の blocker / major が 1 件ずつ解消したかを確認し、`not_fixed` の理由が妥当でなければ同じ `rule` でもう一度挙げる。
+**初回のレビューで出し切る:** blocker / major は初回ですべて挙げる。再レビューで初めて挙げると、それだけで往復が 1 回増える。
+
+**再レビューのとき:** 前回の `findings`、implementer の `result.review_responses`、`{PREV_REVIEWED_COMMIT}`（前回レビューした時点のコミット）が渡される。見るのは次の 2 つだけ：
+1. 前回の blocker / major が 1 件ずつ解消したか。`not_fixed` の理由が妥当でなければ同じ `rule` でもう一度挙げる
+2. `git diff {PREV_REVIEWED_COMMIT}..HEAD` で変わった行に、新しい問題が入っていないか（修正で入ったキャスト・抑制コメント・重複など）
+
+この差分の外にある問題（前回見えていたのに挙げなかったもの）は minor にして記録だけする。セキュリティの blocker（認証・認可・インジェクション・秘密情報）だけは例外として挙げてよい。実行検証の 3 条件は、修正がテストやセットアップに触れていなければ 1 条件（クリーンな状態）だけでよい。
 
 **implementer の不確実点:** プロンプト末尾に implementer の `uncertainty_points` が付いていれば、1 件ずつコードと仕様書で確かめ、`uncertainty_verdicts` に `resolved`（妥当と判断できる。理由を書く）か `needs_human`（要件の解釈が要り、レビュアーでは決められない）を返す。直すべき問題なら `findings` にも挙げる。
 

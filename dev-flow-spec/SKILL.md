@@ -39,6 +39,8 @@ git diff {baseline_commit}..HEAD -- doc/requirements/ | grep -E '^[+-].*REQ-[0-9
 - 判定に迷う ID は要件定義書の該当箇所を Read して確認する
 - 結果を `REQ-002 (modified), REQ-007 (added)` の形式で `{CHANGED_REQ_IDS}` に入れる。`fix` で差分が無い場合は `（要件変更なし）` とする
 
+**小さい change の判定（`kind = "change"` のとき）:** `{CHANGED_REQ_IDS}` が 3 件以下なら `state.json.change_scale` に `"small"`、4 件以上なら `"normal"` を書く。`small` は consistency・compliance の軽量ルートに使う（2026-10 の sandbox-api では、REQ 2〜3 件の change でも spec 9 分・consistency 7 分・compliance 6 分×2 と、実装以外に 30 分前後かかっていた）。`feature` / `fix` / `refactor` では書かない（あれば消す）
+
 `kind = "fix"` のときは `{FIX_DESCRIPTION}` に task をそのまま渡す。`kind = "fix"` では **test-spec-writer のみ**起動し、API 仕様書・インフラ仕様書・モックは触らない（不具合修正で API が変わるなら `change` として扱う）。
 
 ## STEP 1: ドキュメント生成
@@ -64,6 +66,12 @@ Agent Teams（`TeamCreate` / `team_name`）は使用しません。writer・revi
 | `mock-writer` | `prompts/mock-writer.md` | `{REQUIREMENTS_PATHS}`, `{MOCK_PATH}`, `{tech_stack}`, `{KIND}`, `{CHANGED_REQ_IDS}` | IS_GUI=true かつ kind ≠ fix |
 
 reviewer にも `{KIND}` を渡す（差分更新モードでは既存 ID の保持を検証する）。
+
+**`kind = "change"` で起動しない writer:** `api-spec-writer` / `infra-spec-writer` / `mock-writer` は、次の両方に当てはまるとき起動しない（その文書は変わらないので、reviewer も起動しない）。迷ったら起動する。
+- 既存の文書に、変更 REQ を `covers` している項目（エンドポイント・リソース・画面）が無い
+- 要件定義書の差分（`git diff {baseline_commit}..HEAD -- doc/requirements/`）が、その文書の範囲（API のリクエスト・レスポンス / インフラ構成 / 画面の表示・操作）に触れていない
+
+**差分更新モードの reviewer の範囲:** reviewer は `status: added|modified` の項目と、それらと ID・`covers` でつながる項目だけを見る（各 reviewer プロンプトの「差分更新モードの追加チェック」）。変わっていない既存項目の書き方では差し戻さない。
 
 **差分更新モード（kind = `change` / `fix`）の要点**: writer は既存ファイルを読み、既存 ID を振り直さず、変更のあった REQ に紐づく項目だけ追加・修正して `status: added|modified` を付ける。詳細は各 writer プロンプトに記載。
 

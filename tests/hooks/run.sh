@@ -629,6 +629,12 @@ assert_eq "同じ TC-ID のテストの名前変更は allow" "$(decision "$out"
 out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 119 --merge')")"
 assert_eq "TC-ID が違うテストへの置き換えは deny" "$(decision "$out")" "deny"
 assert_contains "消えた TC のテストを提示" "$(reason "$out")" "test_tc043"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 123 --merge')")"
+assert_eq "TC-ID の無いテストのその場での書き換え（追加数 >= 削除数）は allow" "$(decision "$out")" "allow"
+
+out="$(run_hook pr-merge-guard.sh "$dir" "$(bash_json 'gh pr merge 124 --merge')")"
+assert_eq "テスト定義を 2 件消して 1 件足すかたまりは deny" "$(decision "$out")" "deny"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ implementer（書く側）と reviewer（照合する側）の両方に注入す
 
 ## 選択ルール
 
-どのファイルを読むかの正本は `dev-flow-implementation/SKILL.md` STEP B「言語・フレームワーク規約」の表（実行時はそちらだけを見る）。以下は規約ファイルを追加・保守する人向けの説明。
+どのファイルを読むかの正本は `dev-flow-implementation/reference/agent-prompt-injection.md`「言語・フレームワーク規約の注入」の表（実行時はそちらだけを見る）。以下は規約ファイルを追加・保守する人向けの説明。
 
 `state.json.tech_stack` から次の順で選び、**すべて**注入する（後のものが前のものを上書き・補足する）：
 

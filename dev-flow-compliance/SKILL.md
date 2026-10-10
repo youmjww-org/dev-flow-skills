@@ -124,7 +124,7 @@ find . -type f \
 
 列挙されたファイルを Read ツールで読み込む。ファイル数が多い場合は API 仕様書のエンドポイント一覧を基準に、関連するハンドラ・サービスファイルを優先して読み込む。
 
-**`kind` が `change` / `fix` のときは全ファイルを読まない。** 読むのは次のものだけ（2026-10 の sandbox-api では、小さい change でもここで全実装を読み、1 回 6 分かかっていた）：
+**`kind` が `change` / `fix` のときは全ファイルを読まない。** 読むのは次のものだけ（全実装を読むと、小さい change でもここだけで数分かかる）：
 - `git diff --name-only {DIFF_BASE}..HEAD` に出る実装ファイル（ドキュメント・テストを除く）。`{DIFF_BASE}` は `state.json.diff_base_commit`（implementation が `baseline_commit` を進める前の値）。無ければ `base_branch` の分岐元（`git merge-base origin/main HEAD` 等）を使い、それも決まらなければ全ファイルを読む
 - 対象 ID（STEP 0）の API のルート定義と、そのハンドラ・サービス
 

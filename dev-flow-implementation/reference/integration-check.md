@@ -4,7 +4,7 @@
 
 **手順（グループごと、Dev/QA 両方の implementer が `completed` を返した後）:**
 
-0. **Dev ブランチにコミットがあることを確認する**。`completed` が返っていても、コミット前に止まっていたり別ブランチにコミットしていたりすると、空のブランチをマージして「統合テストが通らない」原因を取り違える（実戦で、コミットの無い Dev ブランチを QA 側でマージしようとして空振りした）：
+0. **Dev ブランチにコミットがあることを確認する**。`completed` が返っていても、コミット前に止まっていたり別ブランチにコミットしていたりすると、空のブランチをマージして「統合テストが通らない」原因を取り違える：
    ```bash
    git -C {MAIN_DIR} rev-list --count {base_branch}..dev/{team}-group-N   # 0 なら止まる
    git -C {MAIN_DIR} log --oneline {base_branch}..dev/{team}-group-N       # 完了 JSON の result.commits と一致するか

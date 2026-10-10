@@ -470,15 +470,16 @@ dev-flow-skills/
 │   │   ├── recovery.md             # state.json とリモートの乖離からの復旧
 │   │   ├── integration-check.md    # STEP C.5 Dev + QA 統合検証の手順
 │   │   ├── merge-ops.md            # STEP G マージ運用（順序・UNKNOWN・deny 理由の分類）
+│   │   ├── doc-issues.md           # ドキュメント誤りの集約・判断の 3 択・doc-fix フロー
 │   │   ├── conventions/            # 規約とレビューチェックリスト（testing / maintainability は常時、go / python / typescript / react / nextjs / php / laravel / shell は tech_stack で選択）
-│   │   └── agent-prompt-injection.md  # memory注入・ガードレール・昇格通知
+│   │   └── agent-prompt-injection.md  # 規約ファイルの選び方・memory注入・ガードレール・昇格通知
 │   ├── scripts/
 │   │   └── ensure-worktree.sh      # STEP A worktree 作成と依存物・.env の準備
-│   └── prompts/                    # エージェントプロンプト（チーム別）
-│       ├── dev-infra.md            # Infra Dev（設計判断の記録・JSON通知）
-│       ├── dev-app.md              # App Dev（設計判断の記録・JSON通知）
-│       ├── qa-infra.md             # Infra QA（JSON通知）
-│       └── qa-app.md               # App QA（JSON通知）
+│   └── prompts/                    # エージェントプロンプト（{TEAM} で App / Infra を切り替える）
+│       ├── dev.md                  # Dev implementer（App / Infra 共通。設計判断の記録・JSON通知）
+│       ├── qa.md                   # QA implementer（App / Infra 共通。JSON通知）
+│       ├── reviewer-dev.md         # Dev レビュアー（懐疑的レビュー・差分中心）
+│       └── reviewer-qa.md          # QA レビュアー（素朴な質問・TC 網羅）
 ├── dev-flow-test/                  # 5. test
 │   └── SKILL.md                    # テスト実行・モデル昇格
 ├── dev-flow-compliance/            # 6. compliance

@@ -16,6 +16,7 @@
 | `PostToolUse` | `Agent` | `agent-complete.sh` | `stage-*-agent` 完了を `flow.log` に記録し所要時間を算出。requirements 完了時は人間確認ゲートを念押し |
 | `PreToolUse` | `Write\|Edit\|NotebookEdit` | `test-stage-guard.sh` | `next_stage == test` のとき、テストファイル（`*_test.go` / `test_*.py` / `*.test.ts` / `tests/` 等）と `doc/test-spec/` への書き込みを `deny`。test ステージはプロダクションコードしか直せない（DocDD） |
 | `PreToolUse` | `Bash` | `state-write-guard.sh` | `doc/process/state.json` を Bash（リダイレクト・`mv` / `cp`・`tee`・`sed -i`・スクリプトの `open(..., "w")`）で書き換えるのを `deny`。Bash で書くと `state-sync.sh`（Write / Edit のみ）が動かず、検証と `flow.log` への遷移記録が抜けるため。読むだけのコマンドは素通り |
+| `PreToolUse` | `Bash` | `dev-wait-guard.sh` | `next_stage == implementation` のとき、Dev のブランチ・worktree（`dev/{app,infra}-group-N` / `worktree-dev-`）を `sleep` / `until` で待つコマンドを `deny`。QA は Dev を待たずに仕様書から書き、突き合わせは統合検証で行う。1 回だけの `git log` 等の確認は素通り |
 | `PreToolUse` | `Bash` | `pr-merge-guard.sh` | `gh pr merge` を捕まえ、自動マージ条件を検証。`main`/`develop`/`release/*`/`hotfix/*` 向けは常に `deny`。`feature/*` 向けは CI 全通過・コンフリクトなし・DB 破壊的変更なし（`db-destructive-patterns.txt`）・テストの削除/スキップなし（`test-guard-patterns.txt`）。DB 検査はテストファイル内の文字列（SQL インジェクション対策テストのデータ等）を対象外にする・`--merge` 方式のときだけ `allow` |
 | `Stop` | — | `stop-summary.sh` | 直近 10 分以内に dev-flow イベントがあった場合のみ、次ステージとアクションを表示 |
 
@@ -23,7 +24,7 @@
 
 ## 生成されるファイル
 
-- `doc/process/flow.log` — 時系列イベントログ（`event=agent_start|agent_complete|stage_transition|escalation|doc_invalid|auto_merge_allowed|test_stage_write_denied|test_lint_failed|agent_spawned|group_done|remote_verified|stage_gate_denied`）。デバッグと所要時間の把握に使います。git 管理して構いません。
+- `doc/process/flow.log` — 時系列イベントログ（`event=agent_start|agent_complete|stage_transition|escalation|doc_invalid|auto_merge_allowed|test_stage_write_denied|dev_wait_denied|test_lint_failed|agent_spawned|group_done|remote_verified|stage_gate_denied`）。デバッグと所要時間の把握に使います。git 管理して構いません。
 
 ## Slack 通知（opt-in）
 

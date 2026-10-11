@@ -42,7 +42,12 @@ def main():
         old = reviews / "group-9-qa-app-r4.json"  # 前の run のファイルは数えない
         old.write_text(json.dumps({"status": "approved"}))
         os.utime(old, (0, 0))
-        for p in reviews.glob("group-1-*"):
+        (reviews / "spec-infra-fact-checker-r1.json").write_text(json.dumps({
+            "status": "changes_requested", "checked": 9, "unverified": 2,
+            "issues": [{"location": "INFRA-003", "problem": "p", "fix": "f", "source": "https://example.com"}] * 2}))
+        (reviews / "spec-infra-fact-checker-r2.json").write_text(json.dumps({
+            "status": "approved", "checked": 2, "unverified": 0, "issues": []}))
+        for p in [*reviews.glob("group-1-*"), *reviews.glob("spec-*")]:
             t = 1791536400  # 2026-10-09T09:40:00Z
             os.utime(p, (t, t))
 
@@ -56,6 +61,8 @@ def main():
                     ["2026-10-09T09:17:00Z", "2026-10-09T09:23:00Z"])
         write_agent(tdir, "a4", {"agentType": "general-purpose", "name": "reviewer-dev-app-group-1", "model": "opus"},
                     ["2026-10-09T09:28:00Z", "2026-10-09T09:31:00Z"])
+        write_agent(tdir, "a6", {"agentType": "general-purpose", "name": "infra-fact-checker", "model": "opus"},
+                    ["2026-10-09T09:16:00Z", "2026-10-09T09:20:00Z"])
         # run の外で起動したエージェントは数えない
         write_agent(tdir, "a5", {"agentType": "general-purpose", "name": "test-spec-writer"},
                     ["2026-10-08T09:00:00Z", "2026-10-08T09:10:00Z"])
@@ -77,16 +84,20 @@ def main():
     check("agent", s["agent_minutes"], 25.0)
     check("human wait", s["human_wait_minutes"], 10.0)
     check("human stops", s["human_stops"], 1)
-    check("subagents", s["subagents"], 4)
+    check("subagents", s["subagents"], 5)
     check("max review rounds", s["max_review_rounds"], 2)
     roles = {x["role"]: x for x in r["roles"]}
-    check("roles", sorted(roles), ["implementer-dev", "implementer-qa", "reviewer", "stage"])
+    check("roles", sorted(roles), ["fact-checker", "implementer-dev", "implementer-qa", "reviewer", "stage"])
     check("dev minutes", roles["implementer-dev"]["total_minutes"], 10.0)
     groups = {g["group"]: g for g in r["groups"]}
     check("groups", sorted(groups), ["1", "1-p2"])
     check("group 1 reviewer", groups["1"].get("reviewer"), 3.0)
     check("reviews", [(x["review"], x["rounds"], x["engines"], x["last_status"]) for x in r["reviews"]],
           [("group-1-dev-app", 2, ["claude", "codex"], "approved")])
+    check("fact check issues", s["fact_check_issues"], 2)
+    check("fact checks", r["fact_checks"],
+          [{"checker": "infra-fact-checker", "first_issues": 2, "checked": 9, "unverified": 2, "rounds": 2}])
+    check("markdown fact checks", "| infra-fact-checker | 9 | 2 | 2 | 2 |" in md, True)
     check("markdown header", md.splitlines()[0], "# dev-flow run の集計（kind=change / profile=cost / reviewer=auto）")
 
     if failures:

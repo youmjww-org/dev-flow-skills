@@ -112,6 +112,7 @@ hook が入っていない（`setup.sh --no-hooks`）環境では自動マージ
 | `doc/process/state.json` | フローの状態 |
 | `doc/process/task_checklist.md` | ステージ進捗とタスク（依存関係付き） |
 | `doc/process/coverage_matrix.md` | REQ × TC × API のカバレッジ行列 |
+| `doc/process/tech_facts_{api,infra}.md` | API・インフラ仕様書の記述を公式ドキュメントと照合した結果（spec の fact-checker が蓄積） |
 | `doc/process/flow.log` | hook のイベントログ |
 | `doc/process/plan_repair_log.md` | Plan Repair の履歴 |
 | `doc/process/escalation_*.md` | 人間への報告（発生時のみ） |

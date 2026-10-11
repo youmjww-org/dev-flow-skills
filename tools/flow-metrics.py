@@ -7,7 +7,7 @@
 読むもの（どれも読み取りだけ）:
 - <project>/doc/process/state.json の harness.stage_history … ステージの時間と人間待ち
 - ~/.claude/projects/<エンコードしたパス>/**/subagents/*.jsonl と *.meta.json … サブエージェントの時間とトークン
-- <project>/doc/process/reviews/*.json … レビューの往復回数とエンジン
+- <project>/doc/process/reviews/*.json … レビューの往復回数とエンジン、spec の公式ドキュメント照合で見つかった食い違いの件数
 
 state.json は run ごとに stage_history を作り直すので、集計できるのは最後の run だけ。
 スキルを変えた前後で比べるときは、run が終わるたびにこのスクリプトの --json を保存しておく。
@@ -41,6 +41,7 @@ def minutes(seconds):
 # 名前（無ければ description）から役割を決める。上から順に最初に当たったもの
 ROLE_PATTERNS = [
     ("stage", r"^stage-"),
+    ("fact-checker", r"fact-check"),
     ("reviewer", r"review|レビュ"),
     ("implementer-dev", r"dev-implementer|implementer-dev|dev 実装|Dev 実装"),
     ("implementer-qa", r"qa-implementer|implementer-qa|qa 実装|QA 実装"),
@@ -141,7 +142,7 @@ def review_rounds(reviews_dir, start, end):
     pat = re.compile(r"^(?P<key>.+?)-r(?P<n>\d+)\.json$")
     for p in sorted(reviews_dir.glob("*.json")):
         m = pat.match(p.name)
-        if not m:
+        if not m or m.group("key").endswith("-fact-checker"):  # 照合は fact_checks で数える
             continue
         mtime = datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)
         if mtime < start or (mtime - end).total_seconds() > 3600:
@@ -159,6 +160,34 @@ def review_rounds(reviews_dir, start, end):
             r["rounds"] = n
             r["last_status"] = data.get("status")
     return rounds
+
+
+def fact_checks(reviews_dir, start, end):
+    """spec-*-fact-checker-rN.json から、公式ドキュメントとの照合で見つかった食い違いを数える。
+    1 回目（r1）の指摘件数が「writer が最初に書いた誤り」の数で、導入の効果を測る指標にする"""
+    found = {}
+    if not reviews_dir.is_dir():
+        return found
+    pat = re.compile(r"^spec-(?P<name>.+-fact-checker)-r(?P<n>\d+)\.json$")
+    for p in sorted(reviews_dir.glob("spec-*-fact-checker-r*.json")):
+        m = pat.match(p.name)
+        if not m:
+            continue
+        mtime = datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)
+        if mtime < start or (mtime - end).total_seconds() > 3600:
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        f = found.setdefault(m.group("name"), {"first_issues": 0, "checked": 0, "unverified": 0, "rounds": 0})
+        n = int(m.group("n"))
+        if n == 1:
+            f["first_issues"] = len(data.get("issues") or [])
+            f["checked"] = data.get("checked") or 0
+            f["unverified"] = data.get("unverified") or 0
+        f["rounds"] = max(f["rounds"], n)
+    return found
 
 
 def build_report(project, claude_dir):
@@ -191,6 +220,7 @@ def build_report(project, claude_dir):
             groups[a["group"]][a["role"]] = max(groups[a["group"]][a["role"]], a["seconds"])
 
     reviews = review_rounds(project / "doc/process/reviews", start, end)
+    facts = fact_checks(project / "doc/process/reviews", start, end)
 
     agent_seconds = sum(s["seconds"] for s in stages.values())
     wait_seconds = sum(w["seconds"] for w in human_waits)
@@ -208,6 +238,7 @@ def build_report(project, claude_dir):
             "human_stops": len(human_waits),
             "subagents": len(agents),
             "max_review_rounds": max((r["rounds"] for r in reviews.values()), default=0),
+            "fact_check_issues": sum(f["first_issues"] for f in facts.values()),
         },
         "stages": [
             {"stage": k, "runs": v["runs"], "minutes": minutes(v["seconds"])} for k, v in stages.items()
@@ -232,6 +263,7 @@ def build_report(project, claude_dir):
             {"review": k, "rounds": v["rounds"], "engines": sorted(v["engines"]), "last_status": v["last_status"]}
             for k, v in sorted(reviews.items())
         ],
+        "fact_checks": [{"checker": k, **v} for k, v in sorted(facts.items())],
     }
 
 
@@ -274,6 +306,10 @@ def render_markdown(r):
         out += ["", "## レビュー", "",
                 table(["review", "往復", "engine", "最終 status"],
                       [[x["review"], x["rounds"], ",".join(x["engines"]), x["last_status"]] for x in r["reviews"]])]
+    if r["fact_checks"]:
+        out += ["", "## 公式ドキュメントとの照合（spec）", "",
+                table(["checker", "照合した主張", "1 回目の食い違い", "未確認", "往復"],
+                      [[x["checker"], x["checked"], x["first_issues"], x["unverified"], x["rounds"]] for x in r["fact_checks"]])]
     return "\n".join(out)
 
 

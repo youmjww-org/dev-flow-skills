@@ -202,6 +202,8 @@ flowchart LR
     ASW -. 完了 .-> ASR["api-spec-reviewer<br/>Codex（read-only）"]
     ISW -. 完了 .-> ISR["infra-spec-reviewer<br/>Codex（read-only）"]
     MW -. 完了 .-> MR["mock-reviewer<br/>Codex（read-only）"]
+    ASW -. 完了 .-> AFC["api-fact-checker<br/>Claude（WebFetch）"]
+    ISW -. 完了 .-> IFC["infra-fact-checker<br/>Claude（WebFetch）"]
     TSR -. changes_requested → SendMessage で再開 .-> TSW
     TSR:::codex
     ASR:::codex
@@ -211,6 +213,8 @@ flowchart LR
 ```
 
 writer は Claude（quality: Opus / cost: Sonnet）、reviewer は Codex です。Codex が使えないときは reviewer も Claude で動きます。
+
+API 仕様書とインフラ仕様書には、reviewer と並行して **fact-checker** が付きます。設定名・既定値・上限・フレームワークの挙動など、公式ドキュメントで真偽が決まる記述を `tech_stack` のバージョンの公式ドキュメントと照らし合わせ、食い違いを出典 URL 付きで指摘します（「それらしいが間違っている」記述が implementation や test で見つかって手戻りするのを防ぐため）。照合結果は `doc/process/tech_facts_{api,infra}.md` に蓄積され、同じバージョンの主張は取得し直しません。公式ドキュメントで確かめられなかった主張では差し戻しません。WebFetch を使うので、fact-checker は reviewer のエンジンに関係なく Claude で動きます。
 
 #### 自動モデル昇格（実装・レビュー、cost プロファイル）
 
@@ -455,6 +459,7 @@ dev-flow-skills/
 │       ├── api-spec-reviewer.md    # API仕様書レビュー
 │       ├── infra-spec-writer.md    # インフラ仕様書
 │       ├── infra-spec-reviewer.md  # インフラ仕様書レビュー
+│       ├── tech-fact-checker.md    # API・インフラ仕様書の公式ドキュメント照合
 │       ├── mock-writer.md          # UIモック（HTML）
 │       └── mock-reviewer.md        # UIモックレビュー
 ├── dev-flow-consistency/           # 3. consistency（+ plan_repair）
@@ -503,7 +508,7 @@ dev-flow-skills/
 | ステージの実行者 | 全ステージ | オーケストレーターが直接実行 | `stage-*-agent`（requirements / compliance / bootstrap は Opus、他は Haiku） |
 | bootstrap | dev-flow-bootstrap | 子も Opus | 棚卸し・仕様書逆生成の子: Sonnet |
 | requirements | dev-flow-requirements | Opus | Opus |
-| spec | dev-flow-spec | writer: Opus / reviewer: Codex（使えなければ Opus） | writer: Sonnet / reviewer: Codex（使えなければ Sonnet） |
+| spec | dev-flow-spec | writer: Opus / reviewer: Codex（使えなければ Opus）/ fact-checker: Opus | writer: Sonnet / reviewer: Codex（使えなければ Sonnet）/ fact-checker: Sonnet |
 | consistency STEP 0 Impact Analysis | dev-flow-consistency | Opus | Sonnet |
 | consistency | dev-flow-consistency | 子: Opus | 整合性チェック子: Opus / writer 子: Sonnet |
 | implementation 実装 | dev-flow-implementation | Opus（昇格なし） | Sonnet → Opus（自動昇格） |

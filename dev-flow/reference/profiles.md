@@ -16,6 +16,7 @@ dev-flow は 2 つの実行プロファイルを持つ。**既定は `quality`**
 | bootstrap の要件定義書逆生成 | dev-flow-bootstrap | opus | opus |
 | spec の writer | dev-flow-spec | opus | sonnet |
 | spec の reviewer | dev-flow-spec | **codex**（使えなければ opus） | **codex**（使えなければ sonnet） |
+| spec の fact-checker（API・インフラ仕様書の公式ドキュメント照合） | dev-flow-spec | opus（WebFetch を使うので codex にはしない） | sonnet |
 | consistency STEP 0 Impact Analysis | dev-flow-consistency | opus | sonnet |
 | consistency の整合性チェック | dev-flow-consistency | opus | opus |
 | checklist-writer / spec-cache-writer | dev-flow-consistency | opus | sonnet |

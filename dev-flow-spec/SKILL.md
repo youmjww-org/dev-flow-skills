@@ -129,19 +129,35 @@ reviewer は最終回答として `{"status":"approved"|"changes_requested","iss
 
 **reviewer のエンジン（codex 優先）:** 最初の reviewer を起動する前に `state.json.reviewer_engine`（無ければ `auto`）を見る。`auto` なら `${CLAUDE_SKILL_DIR}/../dev-flow/codex/review.sh available` を 1 回実行し、0 なら reviewer を **Codex CLI で動かす**（`claude`、または `available` が 3 なら上の表のとおり Claude のサブエージェント）。起動・待ち方・失敗時に Claude へ切り替える手順は `${CLAUDE_SKILL_DIR}/../dev-flow/reference/codex-review.md` を Read して従う（種別は `spec`、cwd はメインの作業ディレクトリ、出力は `doc/process/reviews/spec-{reviewer name}-r{回数}.json`）。プロンプトは上の表のファイルを置換したもの、受け取った JSON の扱い（1c の修正ループ）は Claude のときと同じ。
 
+### 1b-2. 公式ドキュメントとの照合（API 仕様書・インフラ仕様書）
+
+`api-spec-writer` / `infra-spec-writer` が完了したら、reviewer と**同じターンで並行して** fact-checker を起動します（`run_in_background=true`, `model` は quality: `"opus"` / cost: `"sonnet"`）。reviewer の完了を待たないので、レビューの所要時間はほぼ増えません。テスト定義書とモックでは起動しません。
+
+| writer | fact-checker name | プロンプトファイル | プレースホルダー |
+|---|---|---|---|
+| `api-spec-writer` | `api-fact-checker` | `prompts/tech-fact-checker.md` | `{SPEC_PATH}`=`{API_SPEC_PATH}`, `{DOC_KIND}`=`API`, `{NAME}`=`api-fact-checker`, `{FACTS_PATH}`=`doc/process/tech_facts_api.md`, `{tech_stack}`, `{KIND}` |
+| `infra-spec-writer` | `infra-fact-checker` | `prompts/tech-fact-checker.md` | `{SPEC_PATH}`=`{INFRA_SPEC_PATH}`, `{DOC_KIND}`=`インフラ`, `{NAME}`=`infra-fact-checker`, `{FACTS_PATH}`=`doc/process/tech_facts_infra.md`, `{tech_stack}`, `{KIND}` |
+
+- fact-checker は WebFetch / WebSearch で公式ドキュメントを読むので、**reviewer のエンジンに関係なく常に Claude のサブエージェント**で動かす（codex の spec レビューは read-only でネットワークが無い）
+- 照合結果は `{FACTS_PATH}` に蓄積され（2 つの fact-checker が同時に書くのでファイルを分けている）、修正ループの 2 回目以降と次の run では同じバージョンの主張を取得し直さない。implementation の conventions-verifier（`dev-flow-implementation/reference/conventions/version-check.md`）とは別のファイル（あちらは規約、こちらは仕様書の主張）
+- fact-checker が返す JSON は reviewer と同じ形（`issues[]` に `source` が付くだけ）。受け取るたびに `doc/process/reviews/spec-{fact-checker name}-r{回数}.json` に Write で保存する（効果の計測に使う。`tools/flow-metrics.py` が 1 回目の指摘件数を集計する）。`矛盾` / `非推奨` の主張だけが `issues` に入り、`未確認` では差し戻さない
+- ネットワークが使えず全件 `未確認` で返ってきても止めない。STEP 2 の人間レビューで「公式ドキュメントとの照合はできなかった（未確認 N 件）」と一言添える
+
 ### 1c. 修正ループ
 
-| reviewer の結果 | 動作 |
+API 仕様書・インフラ仕様書は、reviewer と fact-checker の**両方の結果が揃ってから**判定します。どちらかが `changes_requested` ならそのドキュメントは `changes_requested` とし、両方の `issues[]` を合わせて（要約せず JSON のまま）writer に渡します。再レビューでは reviewer と fact-checker を両方とも再起動します。fact-checker の指摘のうち `fix` に「要件の意味を変えないと直せない」とあるものは writer に渡さず、STEP 2 の人間レビューに持ち越します。
+
+| reviewer（＋ fact-checker）の結果 | 動作 |
 |---|---|
 | `approved` | そのドキュメントは完了 |
-| `changes_requested` | `issues[]` を `SendMessage(to: "{writer name}")` で writer に渡して修正させ、完了後に同じ reviewer を再起動して再レビュー |
+| `changes_requested` | `issues[]` を `SendMessage(to: "{writer name}")` で writer に渡して修正させ、完了後に同じ reviewer（API・インフラは fact-checker も）を再起動して再レビュー |
 | JSON がパースできない | 回答本文を人間が読める形で保持し、明確な指摘があれば `changes_requested` として扱う |
 
 1 ドキュメントあたりの修正ループは **最大 3 回**。超過したら残りの指摘を STEP 2 の人間レビューに持ち越します。
 
 ### 1d. 完了判定とリカバリ
 
-起動したすべての reviewer が `approved`（または上限到達）になったら STEP 2 へ進みます。
+起動したすべての reviewer と fact-checker が `approved`（または上限到達）になったら STEP 2 へ進みます。
 
 通知が届かない場合（エージェントが途中でエラー終了した等）は、以下の手順でリカバリします：
 1. 各ドキュメントファイル（TEST_SPEC_PATH / API_SPEC_PATH / INFRA_SPEC_PATH / MOCK_PATH）の存在を Bash で確認する
@@ -164,9 +180,9 @@ AskUserQuestion ツールで以下を同時に提示してレビューを依頼�
 | 対象 | 結果 | 動作 |
 |---|---|---|
 | テスト定義書 | 修正が必要 | 指摘内容を `test-spec-writer` に SendMessage して再生成、完了後 `test-spec-reviewer` を再起動して再レビュー |
-| API仕様書 | 修正が必要 | 指摘内容を `api-spec-writer` に SendMessage して再生成、完了後 `api-spec-reviewer` を再起動して再レビュー |
+| API仕様書 | 修正が必要 | 指摘内容を `api-spec-writer` に SendMessage して再生成、完了後 `api-spec-reviewer` と `api-fact-checker` を再起動して再レビュー |
 | モック | 修正が必要 | 指摘内容を `mock-writer` に SendMessage して再生成、完了後 `mock-reviewer` を再起動して再レビュー |
-| インフラ仕様書 | 修正が必要 | 指摘内容を `infra-spec-writer` に SendMessage して再生成、完了後 `infra-spec-reviewer` を再起動して再レビュー |
+| インフラ仕様書 | 修正が必要 | 指摘内容を `infra-spec-writer` に SendMessage して再生成、完了後 `infra-spec-reviewer` と `infra-fact-checker` を再起動して再レビュー |
 | すべて承認 | — | 出力処理へ進む |
 
 **SendMessage で再開できない場合（writer が破棄済み等）:**

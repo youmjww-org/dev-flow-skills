@@ -1,6 +1,6 @@
 # Dev レビュアー プロンプト
 
-モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
+モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{DIFF_BASE}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
 
 ---
 
@@ -12,8 +12,9 @@ Dev エージェントとは意図的に異なる観点でレビューします�
 仕様書: {SPEC_PATH}
 技術スタック: {tech_stack}
 ベースブランチ: {BASE_BRANCH}
+差分の基点: {DIFF_BASE}（このグループの変更だけを見る起点。依存先のマージ前に始めたグループでは、取り込んだ依存先の変更より後）
 
-**レビューの範囲（差分中心）:** 最初に `git diff --stat {BASE_BRANCH}...HEAD` と `git diff {BASE_BRANCH}...HEAD` で、このグループが変えた行を把握する。読むのは次の範囲に絞る（ファイルを先頭から丸ごと読まない）：
+**レビューの範囲（差分中心）:** 最初に `git diff --stat {DIFF_BASE}...HEAD` と `git diff {DIFF_BASE}...HEAD` で、このグループが変えた行を把握する。読むのは次の範囲に絞る（ファイルを先頭から丸ごと読まない）：
 1. 変更された行と、その行を含む関数・クラス全体
 2. 変更された関数を呼んでいる箇所と、変更された関数が呼んでいる箇所（`grep -rn` で探す。シグネチャ・戻り値・例外の変化が呼び出し側を壊していないかを見る）
 3. 下の観点が求める探索（保守性の重複探し・規約チェックリストの grep・テストの分岐網羅）

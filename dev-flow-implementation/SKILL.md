@@ -79,6 +79,7 @@ disable-model-invocation: true
     "depends_on": {"group-1": [], "group-2": [], "group-3": ["group-1", "group-2"]},
     "pr_numbers": {},
     "parked_groups": {},
+    "early_from": {},
     "batches": [["group-1", "group-2", "group-3"]],
     "current_batch": 0
   }
@@ -101,12 +102,20 @@ disable-model-invocation: true
 
 ```
 while 今のバッチに未完了グループが存在する:
-  実行可能グループ = 今のバッチにあり、保留でなく、depends_on が全て completed_groups に含まれるグループ
+  実行可能グループ = 今のバッチにあり、保留でなく、depends_on が全て「completed_groups にある」か「PR 作成済み（承認済み）」のグループ
   実行可能グループが無く、動いているグループも無い → 保留中の判断をまとめて聞く（下記）
   実行可能グループを並列に STEP A〜H まで起動（run_in_background で同時進行）
   いずれかのグループ完了 → completed_groups に追加 → 次の実行可能グループを評価
 今のバッチが終わった → 「バッチの区切り」へ
 ```
+
+**先行開始:** 依存先のグループがまだマージされていなくても、レビューが承認されて PR を作った時点（STEP E の後）で後続グループを始める。依存先の CI〜マージ（1 段 20 分前後）を待たないため。2026-10 の 24 グループの run では依存が 9 段の直列で、この待ちだけでクリティカルパスに 3 時間ほど乗っていた。
+
+- STEP A で、依存先のうち未マージのグループの Dev / QA ブランチを `ensure-worktree.sh` の取り込むブランチに渡す（例 `ensure-worktree.sh dev infra 5 dev/infra-group-3 qa/infra-group-3`）。`implementation_progress.early_from["group-5"] = ["group-3"]` に記録する
+- implementer のプロンプトの `{TASKS}` の先頭に「依存先グループ {M} の変更はこの worktree に取り込み済み（まだベースブランチにはマージされていない）」と書く
+- 先行開始したグループは、依存先が**すべて** `completed_groups` に入るまで STEP E（PR 作成）に進まない。入ったら、Dev / QA の worktree で `git fetch origin && git merge origin/{base_branch}` を行い（implementer に頼む）、取り込んだ時点から依存先のブランチに変化があったとき（CI の修正など）だけ STEP C.5 の統合検証をやり直す
+- 依存先が保留になった・`CLOSED` になったときは、先行開始したグループも保留にする。依存先のブランチにレビュー後の修正が入ったら、後続の implementer に `SendMessage` で `git merge {依存先のブランチ}` を頼む
+- `ensure-worktree.sh` が終了コード 3（取り込みでコンフリクト）を返したら、先行開始せずに依存先のマージを待つ
 
 **人間に聞くのは、ループの中では「実行可能グループも動いているグループも無くなった」ときだけ。** 途中で人間の判断が要る事柄が出たら、AskUserQuestion を出さずに仮に決めて進め、`doc/process/pending_decisions.md` に積む。先へ進めないグループだけを保留にし、ほかのグループは止めない。何を積むか・仮の扱い・聞き方・回答の反映は [reference/pending-decisions.md](reference/pending-decisions.md)。
 
@@ -126,7 +135,7 @@ teammate の表示モード（Claude Code の `teammateMode`）が tmux / iTerm2
 
 メインの作業ディレクトリ（`MAIN_DIR=$(pwd)`）で、層ごとに `${CLAUDE_SKILL_DIR}/scripts/ensure-worktree.sh <dev|qa> <infra|app> <N>` を実行する（QA の part 2 以降は `<N>` に `N-pK`）。既存なら再利用し、メイン側の `vendor` / `node_modules` / `.venv` のコピーと `.env.example` からの `.env` 作成まで行う（メインの `.env` は秘密を含みうるのでコピーしない）。最後の行に worktree の絶対パスを出す。Laravel の `APP_KEY` など `.env` 作成後の初期化は implementer が行う（`doc/process/environment.md` に書いておく）。
 
-作ったブランチ名を `implementation_progress.active_worktrees` に追加する。
+作ったブランチ名を `implementation_progress.active_worktrees` に追加する。依存先が未マージのときは、そのブランチを引数に足す（「先行開始」）。作った直後の `git -C <worktree> rev-parse HEAD` を `{DIFF_BASE}` として控え、implementer とレビュアーのプロンプトに渡す（このグループの変更だけを `git diff {DIFF_BASE}...HEAD` で見るため。先行開始でなければベースブランチの先端と同じ）。
 
 ---
 
@@ -135,14 +144,15 @@ teammate の表示モード（Claude Code の `teammateMode`）が tmux / iTerm2
 Agent Teams（`TeamCreate` / `team_name`）は使わない。implementer は**名前付きサブエージェント**として起動し、結果は `{RESULT_FILE}`（完了 JSON）で受け取る（最終回答は 1 行の要約）。
 
 - 層の中では **Dev と QA（すべての part）を同じターンで `run_in_background=true` で起動する**。Cross は infra 層が STEP D まで終わってから app 層を起動する
-- プロンプトは `prompts/dev.md` / `prompts/qa.md` を Read し、プレースホルダーを置換して渡す: `{TEAM}`（`app` / `infra`）・`{TEAM_LABEL}`（`App` / `Infra`）・`{TEAM_DOCS}`（ファイル冒頭の説明どおり）・`{GROUP_N}`（QA の part 2 以降は `N-pK`）・`{TASKS}`（その層の Dev タスク / その part の QA タスクと担当ファイル）・`{MAIN_DIR}`・`{MODE}`・`{BASELINE_COMMIT}`・`{RESULT_FILE}`（`{MAIN_DIR}/doc/process/results/group-{GROUP_N}-{dev|qa}-{team}.json`）ほか
+- プロンプトは `prompts/dev.md` / `prompts/qa.md` を Read し、プレースホルダーを置換して渡す: `{TEAM}`（`app` / `infra`）・`{TEAM_LABEL}`（`App` / `Infra`）・`{TEAM_DOCS}`（ファイル冒頭の説明どおり）・`{GROUP_N}`（QA の part 2 以降は `N-pK`）・`{TASKS}`（その層の Dev タスク / その part の QA タスクと担当ファイル）・`{MAIN_DIR}`・`{MODE}`・`{BASELINE_COMMIT}`・`{RESULT_FILE}`（`{MAIN_DIR}/doc/process/results/group-{GROUP_N}-{dev|qa}-{team}.json`）・`{BASE_BRANCH}`・`{DIFF_BASE}`（STEP A）・`{REVIEW_CHECKLIST}`（セルフレビュー用）ほか
 - 仮に決めた事柄（`pending_decisions.md` の行）のうち、このグループのタスクが前提にするものがあれば、`{TASKS}` の末尾に「仮の決定（人間の回答待ち。この前提で実装する）」として書く
-- **QA に Dev を待たせない**: 「Dev の実装ができたら」「Dev ブランチを取り込んでから」のような指示を足さない。QA は仕様書だけで書き終えて完了を返し、Dev との突き合わせは STEP C.5 で行う（Dev を sleep / until で待つコマンドは hook `dev-wait-guard.sh` が拒否する）
+- **QA に Dev を待たせない**: 「Dev の実装ができたら」「Dev ブランチを取り込んでから」のような指示を足さない。QA は仕様書だけで書き終えて完了を返し、Dev との突き合わせは STEP C.5 で行う
+- **完了前のセルフレビュー**: implementer にも `{REVIEW_CHECKLIST}` を渡し、完了 JSON を返す前にレビュアーと同じチェックリスト・観点で自分の差分を確かめて直させる（`prompts/dev.md` / `qa.md` の手順 4.8）。レビューの往復は 1 回で 10〜15 分かかるので、レビュアーが見つける指摘を先に潰しておく（Dev を sleep / until で待つコマンドは hook `dev-wait-guard.sh` が拒否する）
 - 長時間動くので、起動後にツールを実行しないままハングすることがある。疑わしければ `${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` に従う
 
 **プロンプトへの注入**（詳細は [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md)）:
 
-1. **言語・フレームワーク規約**: 同ファイルの表の順に Read し、「書き方」を `{CONVENTIONS}`（implementer）、「レビューチェックリスト」を `{REVIEW_CHECKLIST}`（reviewer）、「標準コマンド」を `{STANDARD_COMMANDS}`（両方）に入れる。規約のバージョン照合（`conventions_verified.md`）が無ければ先に作る
+1. **言語・フレームワーク規約**: 同ファイルの表の順に Read し、「書き方」を `{CONVENTIONS}`（implementer）、「レビューチェックリスト」を `{REVIEW_CHECKLIST}`（reviewer と implementer のセルフレビュー）、「標準コマンド」を `{STANDARD_COMMANDS}`（両方）に入れる。規約のバージョン照合（`conventions_verified.md`）が無ければ先に作る
 2. **実行環境ノート**: `doc/process/environment.md` があれば全文をプロンプト冒頭に入れる。オーケストレーターが環境差異に気付いた時点で作り、以後の全エージェントに配る
 3. **memory フィードバック**: `~/.claude/projects/$(pwd | sed 's|/|-|g')/memory/` の `feedback_review_*.md` / `feedback_test_failures.md` を冒頭に入れる
 4. **ファイルスコープ**: 担当 worktree 配下の作業許可パターンと禁止パターンを明示する
@@ -180,17 +190,21 @@ Agent Teams（`TeamCreate` / `team_name`）は使わない。implementer は**�
 - Dev: `result.unit_tests.failed` が 0、`result.coverage.changed_functions_below_threshold` が空（テストを減らす方向の修正は却下）、`result.mutation` があり `killed: false` が無い（無ければ「重要な分岐を最大 5 件選んでミューテーション確認をし、生き残った変異はテストを強化する」よう依頼）
 - QA: `result.tests.failed` は Dev 実装が無いので非 0 が正常。`note` に「Dev 実装待ち」以外の原因（構文エラー・セットアップ不備）があるときだけ再開させる
 
-通ったら次へ進む（コミットの一覧は `{RESULT_FILE}` に残っているので書き写さない）。`needs_human_review` や `uncertainty_points` があってもここでは人間に聞かない（STEP D でレビュアーが判定する）。`{RESULT_FILE}` が無ければ、`git log` のコミットと STEP C.5 の結果で代わりに確かめる。
+通ったら**すぐに**次を起動する（もう一方の完了は待たない）。Dev が通ったら Dev のレビュー（STEP D）、QA が通ったら QA のレビュー、両方が通ったら統合検証（STEP C.5）。3 つは並行して動く。コミットの一覧は `{RESULT_FILE}` に残っているので書き写さない。`needs_human_review` や `uncertainty_points` があってもここでは人間に聞かない（STEP D でレビュアーが判定する）。`{RESULT_FILE}` が無ければ、`git log` のコミットと STEP C.5 の結果で代わりに確かめる。
 
 **Plan Repair**（詳細は [reference/plan-repair.md](reference/plan-repair.md)）: 発動は最大 3 回（超えたら `requirement_ambiguity` として `pending_decisions.md` に積む）。要件・仕様の解釈が変わらないものはその場で承認扱い、変わるものは「承認 / 却下 / 全体再生成」を `pending_decisions.md` に積んで発端のグループを保留にし、聞くタイミングで聞く。承認なら `state.json.next_stage` を `"plan_repair"` にして終える（オーケストレーターが consistency を mini モードで実行し、未着手グループから再開する）。履歴は `doc/process/plan_repair_log.md`。
 
 ---
 
-### STEP C.5: Dev + QA 統合検証（レビュー前に必ず実施）
+### STEP C.5: Dev + QA 統合検証（レビューと並行）
 
-QA は Dev の実装を見ずにインターフェースを推測してテストを書いているので、合わせて初めて分かる不一致（属性名・文言の違い、テスト間の状態の残留、同名ファイルのコンフリクト）が高い確率で出る。レビュアーに渡す前に、統合して実テストを回す。
+QA は Dev の実装を見ずにインターフェースを推測してテストを書いているので、合わせて初めて分かる不一致（属性名・文言の違い、テスト間の状態の残留、同名ファイルのコンフリクト）が高い確率で出る。PR を作る前に、統合して実テストを回す。
 
-**オーケストレーターは自分でテストを流さず、QA implementer に `SendMessage` で頼む**（テストの出力がオーケストレーターの文脈に入らないようにする）。手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査 → 不備の切り分け → QA のミューテーション確認 → 検証マージを `reset --hard` で取り消し → 結果を `{RESULT_FILE}` の `result.integration` に書く）は [reference/integration-check.md](reference/integration-check.md) に従う。QA の part ごとに、それぞれの QA worktree で行う（順番は問わない）。
+統合は Dev / QA の worktree とは別の使い捨ての worktree（`ensure-worktree.sh int {team} N dev/{team}-group-N qa/{team}-group-N`、毎回作り直す）で行う。レビュアーが見ている worktree を書き換えないので、**レビューと同時に**走らせてよい。
+
+**オーケストレーターは自分でテストを流さず、QA implementer に `SendMessage` で頼む**（テストの出力がオーケストレーターの文脈に入らないようにする）。手順（int worktree で Dev ユニット + QA 仕様テスト・lint・型検査 → 不備の切り分け → QA のミューテーション確認 → 結果を `{RESULT_FILE}` の `result.integration` に書く）は [reference/integration-check.md](reference/integration-check.md) に従う。QA の part ごとに、それぞれ int worktree を作って行う（`N-pK`）。
+
+**PR に進む条件:** Dev・QA のレビューがどちらも承認、かつ**最後の修正より後の**統合検証が通っていること（`result.integration.dev_head` / `qa_head` が今のブランチの HEAD と一致する）。修正が入ったら、再レビューと統合検証のやり直しを同時に起動する。
 
 ---
 
@@ -201,13 +215,15 @@ QA は Dev の実装を見ずにインターフェースを推測してテスト
 | | 実行順 |
 |---|---|
 | cost | 層ごとに Dev レビュー → QA レビュー（同期実行、`run_in_background=false`） |
-| quality | 層ごとに Dev レビュー ∥ QA レビューを同じターンで `run_in_background=true` で起動し、両方の完了を待つ。修正ループも並行してよい |
+| quality | Dev レビューは Dev の完了 JSON が通った時点、QA レビューは QA のが通った時点で、それぞれ `run_in_background=true` で起動する（もう一方と統合検証の完了を待たない）。修正ループも並行してよい |
 
-Cross は infra 層 → app 層の順を保つ。修正でインターフェース・エラーメッセージ・ID が変わり Dev と QA が食い違いうるときは、両方の承認後に STEP C.5 をもう一度回してから STEP E へ進む。
+Cross は infra 層 → app 層の順を保つ。
+
+**修正の渡し方:** レビューの指摘と統合検証の失敗（`result.integration.cause = "impl"`）が同じ implementer に向くときは、先に届いたほうをすぐ渡し、あとから届いたほうも続けて `SendMessage` で渡す（揃うのを待たない）。
 
 **エンジン（codex 優先）:** ステージ最初のレビューの前に `state.json.reviewer_engine`（無ければ `auto`）を見る。`auto` なら `${CLAUDE_SKILL_DIR}/../dev-flow/codex/review.sh available` を 1 回実行し、0 ならすべてのレビューを Codex CLI で動かす（`claude`、または `available` が 3 なら Claude のサブエージェント）。起動・待ち方・失敗時の切り替えは `${CLAUDE_SKILL_DIR}/../dev-flow/reference/codex-review.md`（種別 `impl`、cwd はレビュー対象の worktree）。codex なら Dev と QA は cost でも並べて起動してよい。それ以外（プロンプト・修正ループ・指摘の渡し方）は Claude と同じ。
 
-**プロンプト:** `prompts/reviewer-dev.md` / `prompts/reviewer-qa.md` を Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{BASE_BRANCH}`（`implementation_progress.base_branch`）・仕様書パス・`{tech_stack}` `{REVIEW_CHECKLIST}`、`{REVIEW_FILE}`（メインの作業ディレクトリの `doc/process/reviews/group-{N}-{dev|qa}-{team}-r{回数}.json`）、`{RESULT_FILE}`（対応する implementer の完了 JSON））を置換する。Agent ツールにはツール制限が無いので、Claude のレビュアーにはプロンプト冒頭に「**`{REVIEW_FILE}` を書く以外のファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認する（ミューテーションの再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を付ける。implementer の `uncertainty_points` は、レビュアーが `{RESULT_FILE}` から読む（プロンプトに書き写さない）。
+**プロンプト:** `prompts/reviewer-dev.md` / `prompts/reviewer-qa.md` を Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{BASE_BRANCH}`（`implementation_progress.base_branch`）・`{DIFF_BASE}`（STEP A）・仕様書パス・`{tech_stack}` `{REVIEW_CHECKLIST}`、`{REVIEW_FILE}`（メインの作業ディレクトリの `doc/process/reviews/group-{N}-{dev|qa}-{team}-r{回数}.json`）、`{RESULT_FILE}`（対応する implementer の完了 JSON））を置換する。Agent ツールにはツール制限が無いので、Claude のレビュアーにはプロンプト冒頭に「**`{REVIEW_FILE}` を書く以外のファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認する（ミューテーションの再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を付ける。implementer の `uncertainty_points` は、レビュアーが `{RESULT_FILE}` から読む（プロンプトに書き写さない）。
 
 **レビュー結果の保存:** レビュアーが `{REVIEW_FILE}` に JSON の全文を書き、最終回答では `status` と件数の 1 行だけを返す（codex は `review.sh wait` が書く）。オーケストレーターは `jq -c '{status, n: (.findings | group_by(.severity) | map({(.[0].severity): length}) | add), needs_human: [.uncertainty_verdicts[]? | select(.verdict == "needs_human") | .point]}' {REVIEW_FILE}` で要点だけを読む。STEP H の集約もこのファイルから行う。
 
@@ -249,7 +265,7 @@ Cross は infra 層 → app 層の順を保つ。修正でインターフェー�
 
 ### STEP F: worktree の削除
 
-PR 作成後、このグループの worktree をすべて（QA の part も）`git worktree remove {MAIN_DIR}/../worktree-{dev|qa}-{team}-group-{N} --force` で消す。ブランチは STEP H まで残す。
+PR 作成後、このグループの worktree をすべて（QA の part と int も）`git worktree remove {MAIN_DIR}/../worktree-{dev|qa|int}-{team}-group-{N} --force` で消し、ローカルの `int/{team}-group-{N}` ブランチも `git branch -D` で消す（push していない）。ブランチは STEP H まで残す。
 
 ---
 
@@ -278,7 +294,7 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
 2. **実バージョンの確認（基盤グループのみ）**: 「実バージョンの書き戻し」タスクを含むグループなら、`state.json.tech_stack.language_version` / `framework_version` が lock ファイルと一致しているか `jq` で確かめる。書き戻されていなければ lock から読んで `state.json` だけ更新する（要件定義書は compliance の乖離として残す）
 3. **レビュー findings の集約**: `doc/process/reviews/group-{N}-*.json` の `findings` のうち、`rule` が `review/*`（規約に無かった指摘）でプロジェクト固有でない汎用的なものを `doc/process/review-findings-backlog.md` に追記する（`| グループ | rule | severity | 内容 | 該当ファイル | 昇格先候補 |`。同じ内容があれば「回数」列を増やす）。compliance が「規約ファイルへの昇格候補」として人間に出す
 4. `${CLAUDE_SKILL_DIR}/../dev-flow/hooks/mark-group-done.sh N <PR番号...>` を 1 回の Bash で実行する（チェックリストの `[x]` 化・`completed_groups` / `active_worktrees` / `pr_numbers` の更新・1 コミット。冪等）。スクリプトが無い環境では同じことを手で行う
-5. このグループの Dev / QA implementer と Claude のレビュアーを `TaskStop` で閉じ、待っているグループを起動する
+5. このグループの Dev / QA implementer と Claude のレビュアーを `TaskStop` で閉じ、待っているグループを起動する。`early_from` でこのグループを待っていた先行開始のグループがあれば、依存先がすべて完了したかを確かめ、完了していればベースブランチの取り込みを頼む（「先行開始」）
 
 ---
 

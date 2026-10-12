@@ -22,6 +22,8 @@ baseline_commit: `{BASELINE_COMMIT}`
 技術スタック: `{TECH_STACK}`
 
 完了 JSON の書き先: `{RESULT_FILE}`
+ベースブランチ: `{BASE_BRANCH}`
+差分の基点: `{DIFF_BASE}`（このグループの変更だけを見る起点）
 
 ## グループ {GROUP_N} の QA タスク一覧（{TEAM_LABEL} のみ）
 
@@ -63,6 +65,18 @@ baseline_commit: `{BASELINE_COMMIT}`
 - `Co-Authored-By` などの署名を付けるなら、**自分（このエージェント）の実際のモデル名**を書く
 - **チェックリストの更新はしない**（マージ後にオーケストレーターが行う）
 
+**4.8. 完了前のセルフレビュー（レビュアーと同じ観点で先に潰す）:**
+
+完了 JSON を返す前に、レビュアー（`prompts/reviewer-qa.md`）が見る次のことを自分で確かめ、見つけたものは直してコミットする：
+
+- テスト定義書 frontmatter の `test_cases[].id`（担当分）と worktree のテストの TC-ID を突き合わせ、欠けが無いか
+- 内部関数を直接呼ぶユニットテストを書いていないか（置き場は規約 `testing.md`）。エンドポイント・画面ごとに異常系が 1 つ以上あるか
+- テストの意図がテスト名と本文から読めるか（素朴な質問を受けそうな箇所が無いか）
+- 下の規約チェックリストのうち `test/*` とテスト関連のルール。「確認方法」に grep があれば実際に実行する
+{REVIEW_CHECKLIST}
+
+確かめたルールと直した件数を `result.self_review` に書く。
+
 **5. 全タスク完了 → 以下の JSON を `{RESULT_FILE}` に書き、最終回答は 1 行の要約だけにする（SendMessage は使わない。下の「結果の返し方と待ち方」）:**
 
 `uncertainty_points` が 1 件でもある場合は `needs_human_review` を `true` にする（推定で決めた名前・文言はここに書く）。
@@ -85,7 +99,7 @@ baseline_commit: `{BASELINE_COMMIT}`
 }
 ```
 
-**統合検証（STEP C.5）を頼まれた場合**は、オーケストレーターの依頼にある手順（`dev-flow-implementation/reference/integration-check.md`）で行い、結果を `{RESULT_FILE}` の `result.integration`（`{"dev_unit": {"passed": N, "failed": N}, "qa_spec": {...}, "failed": 合計の失敗数, "coverage": 0.85, "lint_exit_code": 0, "cause": "test | impl | spec | null", "detail": "失敗の切り分け（1〜3 行）"}`）と `result.mutation` に書いて 1 行で返す。テストの出力は貼らない。
+**統合検証（STEP C.5）を頼まれた場合**は、オーケストレーターの依頼にある手順（`dev-flow-implementation/reference/integration-check.md`）で行い、結果を `{RESULT_FILE}` の `result.integration`（`{"dev_head": "<sha>", "qa_head": "<sha>", "dev_unit": {"passed": N, "failed": N}, "qa_spec": {...}, "failed": 合計の失敗数, "coverage": 0.85, "lint_exit_code": 0, "cause": "test | impl | spec | null", "detail": "失敗の切り分け（1〜3 行）"}`）と `result.mutation` に書いて 1 行で返す。テストの出力は貼らない。
 
 **レビュー指摘の修正で再開された場合**は、渡された `findings` の 1 件ごとに `result.review_responses` に `{"rule": "...", "file": "...", "action": "fixed | not_fixed", "detail": "どう直したか / 直さなかった理由"}` を書く。blocker / major を `not_fixed` にするなら理由は必須。
 

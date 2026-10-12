@@ -876,5 +876,32 @@ assert_contains "ファイルが無ければ NG" "$out" "NG 完了 JSON があ�
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------
+# ensure-worktree.sh（先行開始の取り込み・統合検証用の int）
+# ---------------------------------------------------------------------------
+section "ensure-worktree.sh"
+EW="$ROOT/dev-flow-implementation/scripts/ensure-worktree.sh"
+dir="$(mktemp -d)"; mkdir "$dir/main"
+(
+  cd "$dir/main" || exit 1
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
+  git init -q -b feature/x && git commit -q --allow-empty -m init
+  bash "$EW" dev app 1 >/dev/null 2>&1 && (cd ../worktree-dev-app-group-1 && echo a > a.txt && git add a.txt && git commit -qm a)
+  bash "$EW" qa app 1 >/dev/null 2>&1 && (cd ../worktree-qa-app-group-1 && echo t > t.txt && git add t.txt && git commit -qm t)
+  bash "$EW" dev app 2 dev/app-group-1 qa/app-group-1 >/dev/null 2>&1; echo "early=$?"
+  bash "$EW" int app 1 dev/app-group-1 qa/app-group-1 >/dev/null 2>&1; echo "int1=$?"
+  bash "$EW" int app 1 dev/app-group-1 >/dev/null 2>&1; echo "int2=$?"
+  (cd ../worktree-qa-app-group-1 && echo x > a.txt && git add a.txt && git commit -qm x)
+  bash "$EW" dev app 3 dev/app-group-1 qa/app-group-1 >/dev/null 2>&1; echo "conflict=$?"
+) > "$dir/out"
+out="$(cat "$dir/out")"
+assert_contains "依存先のブランチを取り込んで作れる" "$out" "early=0"
+assert_eq "取り込んだ依存先の Dev / QA のファイルがある" "$(ls "$dir/worktree-dev-app-group-2" | tr '\n' ' ')" "a.txt t.txt "
+assert_contains "int を作れる" "$out" "int1=0"
+assert_eq "int は毎回作り直す（前回取り込んだ QA が残らない）" "$(ls "$dir/worktree-int-app-group-1" | tr '\n' ' ')" "a.txt "
+assert_contains "取り込みでコンフリクトしたら 3" "$out" "conflict=3"
+assert_empty "コンフリクトしたら merge を取り消す" "$(git -C "$dir/worktree-dev-app-group-3" status --porcelain)"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

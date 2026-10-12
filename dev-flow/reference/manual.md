@@ -64,7 +64,7 @@
 | 2 | spec | テスト定義書（TC）・API 仕様書・インフラ仕様書・UI モックを並列で作り、reviewer が確認 | `feature` / `change` は**人間がレビュー**してから次へ（同じターンで質問が出る）。`fix` は自動で次へ |
 | 3 | consistency | ID の整合性、カバレッジ行列、依存関係付きのタスク分解（`task_checklist.md`）、設計凍結 | 自動で次へ |
 | — | plan_repair | implementation 中に計画誤りが見つかったとき、未着手グループのチェックリストだけ作り直す（最大 3 回） | implementation に戻る |
-| 4 | implementation | グループごとに worktree を作り、Dev / QA が並列で実装 → 統合検証 → レビュー → PR → 条件付き自動マージ | PR が人間マージ待ちならそこで止まる。マージ後に `/dev-flow` |
+| 4 | implementation | グループごとに worktree を作り、Dev / QA が並列で実装 → 統合検証 → レビュー → PR → 条件付き自動マージ。途中で人間の判断が要る事柄は仮に決めて `doc/process/pending_decisions.md` に積み、起動できるグループが無くなったときとバッチの区切りでまとめて聞く。グループが 10 個を超えると最大 8 個ずつのバッチに分ける | バッチの区切りで止まる（quality は `/clear` してから `/dev-flow`）。保留しか残らなければ、まとめて聞いてから続ける |
 | 5 | test | origin の最新に揃えて全テストを実行し、プロダクションコードだけを直して全通過させる（テストは変更禁止） | 自動で次へ |
 | 6 | compliance | カバレッジ行列で要件・TC・実装の対応を機械検証し、完了報告 | `next_stage = completed` |
 

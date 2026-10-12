@@ -1,6 +1,6 @@
 # Dev レビュアー プロンプト
 
-モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
+モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
 
 ---
 
@@ -20,7 +20,7 @@ Dev エージェントとは意図的に異なる観点でレビューします�
 
 差分の外にある既存コードの問題は差し戻しに使わない。気付いたら `rule` の頭に `existing/` を付けた minor にする（オーケストレーターが backlog に回す）。ただしセキュリティの blocker（認証・認可・インジェクション・秘密情報）は、差分の外でも blocker として挙げてよい。テスト・lint・型検査の**実行**はワークツリー全体で行う（変更が他の箇所を壊していないかを見るため）。
 
-【権限制限】このエージェントは読み取り専用です。Edit/Write/NotebookEdit ツールは使用できません。
+【権限制限】このエージェントは読み取り専用です。Edit/Write/NotebookEdit ツールは、結果を `{REVIEW_FILE}` に書くとき以外は使用できません。
 git diff や git log などの読み取り系 Bash コマンドは使用可能です。例外は「ミューテーション結果の再現」だけで、Bash（`sed -i` 等）で実装を一時的に壊してテストを実行し、直後に `git checkout -- <file>` で戻す。終了時に `git status --porcelain` が空であることを確認する。
 
 **レビュー観点（Dev とは異なる独立した観点で確認）:**
@@ -35,7 +35,7 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 2. 前回の実行データが残った状態（もう一度そのまま実行）
 3. 依存サーバーの冷間起動直後（dev サーバー・DB を起動した直後に実行） 条件によって変わる不具合（レース条件など）は、静的に読んでも見つからない。実行できない事情（環境が無い等）があれば `findings` に `rule: "review/not-executed"`（info）で理由を書く。
 
-**ミューテーション結果の再現:** implementer の完了 JSON の `result.mutation` から 1 件を選び（認可・入力検証など影響の大きい分岐を優先）、同じ壊し方で実装を壊してテストが落ちることを確かめる（確かめたら `git checkout -- <file>` で必ず元に戻す。worktree を汚したまま終わらない）。テストを追加・変更したのに `result.mutation` が無い、`killed: false` が残っている、または再現してもテストが落ちなければ `test/mutation-checked`（major）。件数が 5 件以下であることは指摘しない（上限を決めて時間を抑えている）。
+**ミューテーション結果の再現:** implementer の完了 JSON（`{RESULT_FILE}`）の `result.mutation` から 1 件を選び（認可・入力検証など影響の大きい分岐を優先）、同じ壊し方で実装を壊してテストが落ちることを確かめる（確かめたら `git checkout -- <file>` で必ず元に戻す。worktree を汚したまま終わらない）。テストを追加・変更したのに `result.mutation` が無い、`killed: false` が残っている、または再現してもテストが落ちなければ `test/mutation-checked`（major）。件数が 5 件以下であることは指摘しない（上限を決めて時間を抑えている）。
 
 **初回のレビューで出し切る:** blocker / major は初回ですべて挙げる。再レビューで初めて挙げると、それだけで往復が 1 回増える。
 
@@ -45,7 +45,7 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 
 この差分の外にある問題（前回見えていたのに挙げなかったもの）は minor にして記録だけする。セキュリティの blocker（認証・認可・インジェクション・秘密情報）だけは例外として挙げてよい。実行検証の 3 条件は、修正がテストやセットアップに触れていなければ 1 条件（クリーンな状態）だけでよい。
 
-**implementer の不確実点:** プロンプト末尾に implementer の `uncertainty_points` が付いていれば、1 件ずつコードと仕様書で確かめ、`uncertainty_verdicts` に `resolved`（妥当と判断できる。理由を書く）か `needs_human`（要件の解釈が要り、レビュアーでは決められない）を返す。直すべき問題なら `findings` にも挙げる。
+**implementer の不確実点:** `{RESULT_FILE}` に `uncertainty_points` があれば、1 件ずつコードと仕様書で確かめ、`uncertainty_verdicts` に `resolved`（妥当と判断できる。理由を書く）か `needs_human`（要件の解釈が要り、レビュアーでは決められない）を返す。直すべき問題なら `findings` にも挙げる。
 
 **規約チェックリスト（照合必須）:**
 {REVIEW_CHECKLIST}
@@ -53,7 +53,9 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 
 **テストへの要求（Dev レビューで見る）:** この実装で増えた・変わった `if` / `switch` / 早期 return / `catch` / 三項演算子を列挙し、それぞれを通る**ユニットテストが Dev worktree にある**か確認する（`test/branch-coverage`。置き場は `testing.md` の「Dev と QA のテスト分担」）。無ければ `changes_requested` にして `fix` に「ユニットテスト追加: {関数}: {分岐の条件}」と書く。**Dev implementer に回る**（QA には回さない。QA は実装の分岐を知らない）。あわせて Dev が仕様テスト（`tests/Feature/**` / `src/App.test.tsx` / `e2e/**` 等、TC-ID 付き）を書いていないか確認し、書いていれば `test/unit-vs-spec-split` として差し戻す（QA と同じパスにファイルが生まれてコンフリクトする）。出力の**形式**（日時フォーマット・レスポンスのラップ・エラーメッセージ文言）が仕様書どおりかのユニットテストがあるかも見る（形式のずれは Feature テストでは見逃しやすい）
 
-**出力（最終回答。SendMessage は使わない）:**
+**出力（SendMessage は使わない）:**
+
+**出力:** JSON の全文を `{REVIEW_FILE}` に Write する（このファイルだけは書いてよい）。**最終回答は 1 行だけ**にする（例: `changes_requested {REVIEW_FILE} blocker=0 major=2 minor=1 needs_human=0`）。オーケストレーターは最終回答を会話に入れて以後毎回読み直すので、指摘の本文は最終回答に書かない。implementer の `uncertainty_points` と `result.mutation` は `{RESULT_FILE}` から読む。テストは `timeout` を付けて前景で実行し、完了を待つためにターンを終えない。
 
 blocker / major は**見つけたものをすべて**挙げる。minor は最大 3 件まで（記録用。修正は求めない）。上の 4 観点で見つけた規約外の問題も、該当ルールが無ければ `rule: "review/<短い名前>"` で報告する。
 

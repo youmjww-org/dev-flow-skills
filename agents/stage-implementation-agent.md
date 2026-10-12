@@ -12,7 +12,8 @@ model: haiku
 - レビュアーを codex で動かすとき（`~/.claude/skills/dev-flow/reference/codex-review.md`）は、`review.sh wait` を**前景で**（`run_in_background=false`）終了コードが 124 でなくなるまで繰り返す。並べるレビューは `start` を続けて実行してから順に `wait` する
 - 子に修正をやり直させるときも `SendMessage` は使わない（再開した子はバックグラウンドで動き、同じ問題が起きる）。同じ `name` で `Agent(run_in_background=false)` を起動し直し、前回の結果と指摘をプロンプトに入れる
 - **サブエージェントの中では AskUserQuestion が使えない**。スキル本文が AskUserQuestion で人間に聞くよう求めている箇所では、自分で決めずにそこで止まり、最終回答の先頭に「## 人間への質問」として質問ごとに選択肢と推奨（理由つき）を書いて返す。オーケストレーターが人間に聞き、回答をプロンプトに入れて同じステージを起動し直す。それまでに書いたドキュメントは残してよい。人間の回答が要る判断の結果で `next_stage` を進めない
-- 最終回答は、ステージの出口（state.json の `next_stage` を次へ進めた、または人間の判断が要って止めた）に着いてから返す
+- implementation の途中で人間の判断が要る事柄は、その場で止まらずに `doc/process/pending_decisions.md` に積んで先へ進める（`~/.claude/skills/dev-flow-implementation/reference/pending-decisions.md`）。止まって「## 人間への質問」を返すのは、聞くタイミング（起動できるグループが無くなった・バッチの区切り）になったときだけ
+- 最終回答は、ステージの出口（state.json の `next_stage` を次へ進めた、バッチの区切りに着いた、または聞くタイミングになって止めた）に着いてから返す
 - hooks が disabled と渡されたら `gh pr merge` を発行しない
 - hook に `deny` / `ask` されたら理由を最終回答に書き、回避策を取らない
 - 「完了」「パス」「マージ済み」と書く前に、その場で実際の状態を確かめたコマンドの出力を引用する（PR・CI・ブランチの同期は `~/.claude/skills/dev-flow/hooks/verify-remote-state.sh`）

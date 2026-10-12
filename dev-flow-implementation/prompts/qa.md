@@ -21,6 +21,8 @@ baseline_commit: `{BASELINE_COMMIT}`
 
 技術スタック: `{TECH_STACK}`
 
+完了 JSON の書き先: `{RESULT_FILE}`
+
 ## グループ {GROUP_N} の QA タスク一覧（{TEAM_LABEL} のみ）
 
 {TASKS}
@@ -61,7 +63,7 @@ baseline_commit: `{BASELINE_COMMIT}`
 - `Co-Authored-By` などの署名を付けるなら、**自分（このエージェント）の実際のモデル名**を書く
 - **チェックリストの更新はしない**（マージ後にオーケストレーターが行う）
 
-**5. 全タスク完了 → 以下の JSON を最終回答として返す（SendMessage は使わない）:**
+**5. 全タスク完了 → 以下の JSON を `{RESULT_FILE}` に書き、最終回答は 1 行の要約だけにする（SendMessage は使わない。下の「結果の返し方と待ち方」）:**
 
 `uncertainty_points` が 1 件でもある場合は `needs_human_review` を `true` にする（推定で決めた名前・文言はここに書く）。
 
@@ -83,9 +85,11 @@ baseline_commit: `{BASELINE_COMMIT}`
 }
 ```
 
+**統合検証（STEP C.5）を頼まれた場合**は、オーケストレーターの依頼にある手順（`dev-flow-implementation/reference/integration-check.md`）で行い、結果を `{RESULT_FILE}` の `result.integration`（`{"dev_unit": {"passed": N, "failed": N}, "qa_spec": {...}, "failed": 合計の失敗数, "coverage": 0.85, "lint_exit_code": 0, "cause": "test | impl | spec | null", "detail": "失敗の切り分け（1〜3 行）"}`）と `result.mutation` に書いて 1 行で返す。テストの出力は貼らない。
+
 **レビュー指摘の修正で再開された場合**は、渡された `findings` の 1 件ごとに `result.review_responses` に `{"rule": "...", "file": "...", "action": "fixed | not_fixed", "detail": "どう直したか / 直さなかった理由"}` を書く。blocker / major を `not_fixed` にするなら理由は必須。
 
-ブロッカー発生時は `status: "blocked"` の JSON を最終回答として返す（その場で作業を止める）:
+ブロッカー発生時は `status: "blocked"` の JSON を `{RESULT_FILE}` に書いて 1 行で返す（その場で作業を止める）。選べる案があれば `blockers[].recommendation` に推奨と理由を必ず書く:
 
 ```json
 {
@@ -98,3 +102,9 @@ baseline_commit: `{BASELINE_COMMIT}`
   "blockers": [{"description": "...", "options": ["選択肢A", "選択肢B"], "recommendation": "推奨案"}]
 }
 ```
+
+## 結果の返し方と待ち方（オーケストレーターの負荷を下げる）
+
+- **完了 JSON・ブロッカー JSON は `{RESULT_FILE}` に Write する**（無ければディレクトリごと作る。同じグループで再開されたら上書きし、前回の内容で必要なもの（`commits` など）は引き継ぐ）。**最終回答は 1 行だけ**にする（例: `completed {RESULT_FILE} lint=0 unit_failed=0 mutation=5/5`、`blocked {RESULT_FILE} requirement_ambiguity`）。オーケストレーターは最終回答を会話に入れ、以後の通知のたびに読み直すため、長い最終回答はフロー全体を遅くする
+- **自分のコマンドの完了を待つためにターンを終えない**。テスト・lint・ビルドは `timeout` を付けて前景で実行する。`run_in_background` で流して通知を待つためにターンを終えると、そのたびにオーケストレーターに通知が飛ぶ。途中経過を `SendMessage` で送らない
+- **取り消しにくい・外に出る操作をしない**: secret・variable の登録、外部サービスの設定変更、実機・本番ホストへの反映、データの削除は、仕様書に手順があっても実行しない。要るなら `uncertainty_points` に「人の作業: {操作}」と書き、無い前提で進める

@@ -54,12 +54,12 @@ disable-model-invocation: true
 0. **マージ待ち PR の取り込み**: `pr_numbers` にあり `completed_groups` に無いグループの PR を `gh pr view <N> --json state,url` で確認する
    - 全 PR が `MERGED` → そのグループの STEP H を実行
    - `OPEN` がある → STEP G の自動マージを再試行。それでも deny ならそのグループは「人間マージ待ち」
-   - `CLOSED`（マージされずに閉じられた）→ AskUserQuestion（再作成 / グループをやり直す）
+   - `CLOSED`（マージされずに閉じられた）→ そのグループを保留にして `pending_decisions.md` に積む（[reference/pending-decisions.md](reference/pending-decisions.md)）
 1. `completed_groups` のグループはスキップ対象にする
 2. `active_worktrees` に残っているブランチの worktree を `git worktree remove {MAIN_DIR}/../worktree-{ブランチ名の / を - に} --force 2>/dev/null || true` で消す
-3. AskUserQuestion:「グループ X から再開します。よろしいですか？」→ 再開する / 最初からやり直す（`implementation_progress` を初期化）
+3. AskUserQuestion:「グループ X から再開します。よろしいですか？」→ 再開する / 最初からやり直す（`implementation_progress` を初期化）。直前の `stage_history` の `outcome` が「バッチ区切り」なら聞かずに `current_batch` のバッチから続ける
 
-無ければ STEP 0-b でベースブランチを決めてから `implementation_progress` を初期化する。
+無ければ STEP 0-b でベースブランチを決めてから `implementation_progress` を初期化し、STEP 0-c でバッチに分ける。
 
 ### STEP 0-b: ベースブランチの確認
 
@@ -77,23 +77,44 @@ disable-model-invocation: true
     "base_branch": "feature/xxx",
     "group_types": {"group-1": "Infra", "group-2": "App", "group-3": "Cross"},
     "depends_on": {"group-1": [], "group-2": [], "group-3": ["group-1", "group-2"]},
-    "pr_numbers": {}
+    "pr_numbers": {},
+    "parked_groups": {},
+    "batches": [["group-1", "group-2", "group-3"]],
+    "current_batch": 0
   }
 }
 ```
 
-`pr_numbers` は STEP E で PR を作るたびに `"group-N": [番号, ...]` を追記する。
+`pr_numbers` は STEP E で PR を作るたびに `"group-N": [番号, ...]` を追記する。`parked_groups` は保留にしたグループと `pending_decisions.md` の番号（`{"group-5": ["P-3"]}`）。
+
+### STEP 0-c: バッチ分け
+
+グループが **10 個を超える**ときは、未完了のグループを最大 8 個ずつのバッチに分けて `implementation_progress.batches` に書く（10 個以下なら全グループで 1 バッチ）。分け方は `depends_on` の順（依存先が同じか前のバッチに入る順）で、同じバッチの中で依存が閉じるものを優先してまとめる。
+
+オーケストレーターは、グループからの完了報告・通知を読むたびに、それまでの会話全体を読み直す。グループ数が多い run を 1 つの会話で通すと、文脈が数十万トークンまで膨らみ、利用上限に早く達する（2026-10 の 24 グループの run 2 本では、1 回あたり平均 46〜51 万トークンを 800〜1,100 回読み直し、1 本は週の上限で 50 時間止まった）。バッチの区切りで会話を新しくすると、文脈が小さいところからやり直せる。
+
+再開時（STEP 0-a）は `batches` と `current_batch` をそのまま使う。Plan Repair で足したグループは、今のバッチの末尾に足す。
 
 ---
 
 ## グループ実行ループ（DAG）
 
 ```
-while 未完了グループが存在する:
-  実行可能グループ = depends_on が全て completed_groups に含まれるグループ
+while 今のバッチに未完了グループが存在する:
+  実行可能グループ = 今のバッチにあり、保留でなく、depends_on が全て completed_groups に含まれるグループ
+  実行可能グループが無く、動いているグループも無い → 保留中の判断をまとめて聞く（下記）
   実行可能グループを並列に STEP A〜H まで起動（run_in_background で同時進行）
   いずれかのグループ完了 → completed_groups に追加 → 次の実行可能グループを評価
+今のバッチが終わった → 「バッチの区切り」へ
 ```
+
+**人間に聞くのは、ループの中では「実行可能グループも動いているグループも無くなった」ときだけ。** 途中で人間の判断が要る事柄が出たら、AskUserQuestion を出さずに仮に決めて進め、`doc/process/pending_decisions.md` に積む。先へ進めないグループだけを保留にし、ほかのグループは止めない。何を積むか・仮の扱い・聞き方・回答の反映は [reference/pending-decisions.md](reference/pending-decisions.md)。
+
+**バッチの区切り:** 今のバッチのグループがすべて完了したら（保留だけが残る場合も含む）:
+
+1. `pending_decisions.md` と `doc_issues.md` の未回答をまとめて聞き、反映する（pending-decisions.md「回答の反映」。Plan Repair が要れば先に済ませ、足したグループが終わるまでこのバッチを続ける）
+2. 最後のバッチなら「全グループ完了後」へ進む
+3. それ以外なら `current_batch` を 1 増やして state.json をコミットし、ステージを終える。quality では人間に「バッチ {K}/{M} が完了しました。文脈を空にするため `/clear` してから `/dev-flow` で次のバッチに進んでください」と伝える（`stage_history` の `outcome` には「バッチ区切り」と書く）。cost ではオーケストレーターがそのまま `stage-implementation-agent` を起動し直す（ステージエージェントの文脈は起動ごとに空になる）
 
 **同時に動かすのは最大 4 グループ、implementer は最大 8 本**（QA の part の数だけ増える）。implementer は tmux のペインを 1 つずつ使い、上限に達するとレビュアーや修正の implementer を起動できなくなる。実行可能なグループが 5 つ以上あれば、`depends_on` で後続に待たれている数が多いグループから起動する。STEP H で implementer とレビュアーを閉じたら次のグループを起動する。
 
@@ -109,10 +130,11 @@ while 未完了グループが存在する:
 
 ### STEP B: implementer の起動
 
-Agent Teams（`TeamCreate` / `team_name`）は使わない。implementer は**名前付きサブエージェント**として起動し、結果は最終回答（JSON）で受け取る。
+Agent Teams（`TeamCreate` / `team_name`）は使わない。implementer は**名前付きサブエージェント**として起動し、結果は `{RESULT_FILE}`（完了 JSON）で受け取る（最終回答は 1 行の要約）。
 
 - 層の中では **Dev と QA（すべての part）を同じターンで `run_in_background=true` で起動する**。Cross は infra 層が STEP D まで終わってから app 層を起動する
-- プロンプトは `prompts/dev.md` / `prompts/qa.md` を Read し、プレースホルダーを置換して渡す: `{TEAM}`（`app` / `infra`）・`{TEAM_LABEL}`（`App` / `Infra`）・`{TEAM_DOCS}`（ファイル冒頭の説明どおり）・`{GROUP_N}`（QA の part 2 以降は `N-pK`）・`{TASKS}`（その層の Dev タスク / その part の QA タスクと担当ファイル）・`{MAIN_DIR}`・`{MODE}`・`{BASELINE_COMMIT}` ほか
+- プロンプトは `prompts/dev.md` / `prompts/qa.md` を Read し、プレースホルダーを置換して渡す: `{TEAM}`（`app` / `infra`）・`{TEAM_LABEL}`（`App` / `Infra`）・`{TEAM_DOCS}`（ファイル冒頭の説明どおり）・`{GROUP_N}`（QA の part 2 以降は `N-pK`）・`{TASKS}`（その層の Dev タスク / その part の QA タスクと担当ファイル）・`{MAIN_DIR}`・`{MODE}`・`{BASELINE_COMMIT}`・`{RESULT_FILE}`（`{MAIN_DIR}/doc/process/results/group-{GROUP_N}-{dev|qa}-{team}.json`）ほか
+- 仮に決めた事柄（`pending_decisions.md` の行）のうち、このグループのタスクが前提にするものがあれば、`{TASKS}` の末尾に「仮の決定（人間の回答待ち。この前提で実装する）」として書く
 - **QA に Dev を待たせない**: 「Dev の実装ができたら」「Dev ブランチを取り込んでから」のような指示を足さない。QA は仕様書だけで書き終えて完了を返し、Dev との突き合わせは STEP C.5 で行う（Dev を sleep / until で待つコマンドは hook `dev-wait-guard.sh` が拒否する）
 - 長時間動くので、起動後にツールを実行しないままハングすることがある。疑わしければ `${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` に従う
 
@@ -141,32 +163,32 @@ Agent Teams（`TeamCreate` / `team_name`）は使わない。implementer は**�
 
 ### STEP C: 完了の受け取り
 
-完了通知（最終回答の JSON）を待つ。`sleep` でポーリングしない。タイムアウトの目安（cost: haiku 5 分 / sonnet 15 分 / opus 30 分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えたら agent-hang-recovery.md で切り分ける。
+完了通知を待つ。implementer は完了 JSON の全文を `{RESULT_FILE}` に書き、最終回答では 1 行の要約とファイルのパスだけを返す（「オーケストレーターの文脈」）。`sleep` でポーリングしない。タイムアウトの目安（cost: haiku 5 分 / sonnet 15 分 / opus 30 分。quality: 起動 5 分後に一次確認、生存確認に 3 分応答が無ければハング）を超えたら agent-hang-recovery.md で切り分ける。
 
 | status | blocker_type | 対応 |
 |---|---|---|
 | `"completed"` | — | 下の「完了 JSON の確認」 |
 | `"blocked"` | `"plan_repair_needed"` | Plan Repair（下記） |
-| `"blocked"` | その他 | AskUserQuestion で人間に判断を仰ぐ |
-| `"failed"` | — | AskUserQuestion で人間に報告し指示を仰ぐ |
+| `"blocked"` | その他 | `pending_decisions.md` に積む。推奨案があれば推奨案で続けさせ、無ければグループを保留にする（pending-decisions.md） |
+| `"failed"` | — | `pending_decisions.md` に積み、グループを保留にする |
 
-**完了 JSON の確認**（満たさなければ同じ implementer を `SendMessage` で再開して直させる。各項目最大 2 回、それでも駄目なら `failed` 扱い）:
+**完了 JSON の確認**は `${CLAUDE_SKILL_DIR}/scripts/check-result.sh <dev|qa> {RESULT_FILE}` で行う（下の条件を確かめ、`OK` / `NG <理由>` の行だけを出す。JSON の全文は読まない）。NG なら同じ implementer を `SendMessage` で再開して直させる。各項目最大 2 回、それでも駄目なら `failed` 扱い:
 
 - 共通: `result.lint.exit_code` が 0（欠損も不可）
 - Dev: `result.unit_tests.failed` が 0、`result.coverage.changed_functions_below_threshold` が空（テストを減らす方向の修正は却下）、`result.mutation` があり `killed: false` が無い（無ければ「重要な分岐を最大 5 件選んでミューテーション確認をし、生き残った変異はテストを強化する」よう依頼）
 - QA: `result.tests.failed` は Dev 実装が無いので非 0 が正常。`note` に「Dev 実装待ち」以外の原因（構文エラー・セットアップ不備）があるときだけ再開させる
 
-通ったら `result.commits` を記録して次へ進む。`needs_human_review` や `uncertainty_points` があってもここでは人間に聞かない（STEP D でレビュアーが判定する）。最終回答に JSON が無ければ、`git log` のコミットと STEP C.5 の結果で代わりに確かめる。
+通ったら次へ進む（コミットの一覧は `{RESULT_FILE}` に残っているので書き写さない）。`needs_human_review` や `uncertainty_points` があってもここでは人間に聞かない（STEP D でレビュアーが判定する）。`{RESULT_FILE}` が無ければ、`git log` のコミットと STEP C.5 の結果で代わりに確かめる。
 
-**Plan Repair**（詳細は [reference/plan-repair.md](reference/plan-repair.md)）: 発動は最大 3 回（超えたら `requirement_ambiguity` でエスカレーション）。AskUserQuestion で「承認 / 却下 / 全体再生成」を出し、承認なら `state.json.next_stage` を `"plan_repair"` にして終える（オーケストレーターが consistency を mini モードで実行し、未着手グループから再開する）。履歴は `doc/process/plan_repair_log.md`。
+**Plan Repair**（詳細は [reference/plan-repair.md](reference/plan-repair.md)）: 発動は最大 3 回（超えたら `requirement_ambiguity` として `pending_decisions.md` に積む）。要件・仕様の解釈が変わらないものはその場で承認扱い、変わるものは「承認 / 却下 / 全体再生成」を `pending_decisions.md` に積んで発端のグループを保留にし、聞くタイミングで聞く。承認なら `state.json.next_stage` を `"plan_repair"` にして終える（オーケストレーターが consistency を mini モードで実行し、未着手グループから再開する）。履歴は `doc/process/plan_repair_log.md`。
 
 ---
 
 ### STEP C.5: Dev + QA 統合検証（レビュー前に必ず実施）
 
-QA は Dev の実装を見ずにインターフェースを推測してテストを書いているので、合わせて初めて分かる不一致（属性名・文言の違い、テスト間の状態の残留、同名ファイルのコンフリクト）が高い確率で出る。レビュアーに渡す前に、オーケストレーターが機械的に統合して実テストを回す。
+QA は Dev の実装を見ずにインターフェースを推測してテストを書いているので、合わせて初めて分かる不一致（属性名・文言の違い、テスト間の状態の残留、同名ファイルのコンフリクト）が高い確率で出る。レビュアーに渡す前に、統合して実テストを回す。
 
-手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査 → 不備は該当 implementer に差し戻し → QA のミューテーション確認を依頼 → 検証マージを `reset --hard` で取り消し → 統合結果を PR 説明に書く）は [reference/integration-check.md](reference/integration-check.md) に従う。QA の part ごとに、それぞれの QA worktree で行う（順番は問わない）。
+**オーケストレーターは自分でテストを流さず、QA implementer に `SendMessage` で頼む**（テストの出力がオーケストレーターの文脈に入らないようにする）。手順（QA worktree に Dev ブランチを検証用マージ → Dev ユニット + QA 仕様テスト・lint・型検査 → 不備の切り分け → QA のミューテーション確認 → 検証マージを `reset --hard` で取り消し → 結果を `{RESULT_FILE}` の `result.integration` に書く）は [reference/integration-check.md](reference/integration-check.md) に従う。QA の part ごとに、それぞれの QA worktree で行う（順番は問わない）。
 
 ---
 
@@ -183,23 +205,22 @@ Cross は infra 層 → app 層の順を保つ。修正でインターフェー�
 
 **エンジン（codex 優先）:** ステージ最初のレビューの前に `state.json.reviewer_engine`（無ければ `auto`）を見る。`auto` なら `${CLAUDE_SKILL_DIR}/../dev-flow/codex/review.sh available` を 1 回実行し、0 ならすべてのレビューを Codex CLI で動かす（`claude`、または `available` が 3 なら Claude のサブエージェント）。起動・待ち方・失敗時の切り替えは `${CLAUDE_SKILL_DIR}/../dev-flow/reference/codex-review.md`（種別 `impl`、cwd はレビュー対象の worktree）。codex なら Dev と QA は cost でも並べて起動してよい。それ以外（プロンプト・修正ループ・指摘の渡し方）は Claude と同じ。
 
-**プロンプト:** `prompts/reviewer-dev.md` / `prompts/reviewer-qa.md` を Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{BASE_BRANCH}`（`implementation_progress.base_branch`）・仕様書パス・`{tech_stack}` `{REVIEW_CHECKLIST}`、QA は `{QA_MUTATION}`）を置換する。Agent ツールにはツール制限が無いので、Claude のレビュアーにはプロンプト冒頭に「**ファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認し、指摘は最終回答で返す（ミューテーションの再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を付ける。対応する implementer の `uncertainty_points` を JSON のまま末尾に付ける。
+**プロンプト:** `prompts/reviewer-dev.md` / `prompts/reviewer-qa.md` を Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{BASE_BRANCH}`（`implementation_progress.base_branch`）・仕様書パス・`{tech_stack}` `{REVIEW_CHECKLIST}`、`{REVIEW_FILE}`（メインの作業ディレクトリの `doc/process/reviews/group-{N}-{dev|qa}-{team}-r{回数}.json`）、`{RESULT_FILE}`（対応する implementer の完了 JSON））を置換する。Agent ツールにはツール制限が無いので、Claude のレビュアーにはプロンプト冒頭に「**`{REVIEW_FILE}` を書く以外のファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認する（ミューテーションの再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を付ける。implementer の `uncertainty_points` は、レビュアーが `{RESULT_FILE}` から読む（プロンプトに書き写さない）。
 
-**レビュー結果の保存:** 最終回答 JSON を受け取ったらすぐ、メインの作業ディレクトリの `doc/process/reviews/group-{N}-{dev|qa}-{team}-r{回数}.json` に Write する（codex は `review.sh wait` が書くので不要）。STEP H の集約はこのファイルから行う。
+**レビュー結果の保存:** レビュアーが `{REVIEW_FILE}` に JSON の全文を書き、最終回答では `status` と件数の 1 行だけを返す（codex は `review.sh wait` が書く）。オーケストレーターは `jq -c '{status, n: (.findings | group_by(.severity) | map({(.[0].severity): length}) | add), needs_human: [.uncertainty_verdicts[]? | select(.verdict == "needs_human") | .point]}' {REVIEW_FILE}` で要点だけを読む。STEP H の集約もこのファイルから行う。
 
-**修正ループ（最大 3 回）:** `changes_requested` なら、`findings` を**要約・取捨選択せず JSON のまま**、その implementer に `SendMessage` で渡す（一部だけ渡すと残りが直らないまま再レビューに回り、往復が増える）:
+**修正ループ（最大 3 回）:** `changes_requested` なら、その implementer に `SendMessage` でファイルのパスを渡し、**全件を読ませる**（要約・取捨選択して渡すと、残りが直らないまま再レビューに回り往復が増える。オーケストレーターが JSON を書き写す必要は無い）:
 
 ```
-以下はレビュアーの指摘（JSON そのまま）です。severity が blocker / major のものはすべて直してください。minor は参考です（直さなくてよい）。
-直したら、指摘ごとに「どう直したか / 直さなかった理由」を完了 JSON の result.review_responses に書いてください。
-<findings の JSON 全文>
+レビュアーの指摘が {REVIEW_FILE} にあります。全件を Read し、severity が blocker / major のものはすべて直してください。minor は参考です（直さなくてよい）。
+直したら、指摘ごとに「どう直したか / 直さなかった理由」を {RESULT_FILE} の result.review_responses に書いてください。
 ```
 
 - minor は修正ループに回さない（記録だけ）。同じ `rule` が 3 回以上出たら memory に保存する
-- **再レビュー**: レビュー起動時に対象 worktree の `git rev-parse HEAD` を控え、再レビューではそれを `{PREV_REVIEWED_COMMIT}` として、前回の `findings` と `review_responses` と一緒に渡す。レビュアーが見るのは「前回の blocker / major が解消したか」と「`git diff {PREV_REVIEWED_COMMIT}..HEAD` に新しい問題が無いか」だけ（初回に全部挙げ、2 回目以降は差分だけを見れば 1 往復で片付く）
-- **3 回目の修正後も blocker / major が残ったら**、残りの `findings` を JSON のまま AskUserQuestion で出す（この指摘を残したまま PR にする / もう 1 回直させる / 自分で直す）。上限まで回るのはレビュアーと implementer の判断が食い違っているときで、続けても収まらない
+- **再レビュー**: レビュー起動時に対象 worktree の `git rev-parse HEAD` を控え、再レビューではそれを `{PREV_REVIEWED_COMMIT}` として、前回の `{REVIEW_FILE}` と `{RESULT_FILE}`（`review_responses`）のパスと一緒に渡す。レビュアーが見るのは「前回の blocker / major が解消したか」と「`git diff {PREV_REVIEWED_COMMIT}..HEAD` に新しい問題が無いか」だけ（初回に全部挙げ、2 回目以降は差分だけを見れば 1 往復で片付く）
+- **3 回目の修正後も blocker / major が残ったら**、PR を作らずにグループを保留にし、「この指摘を残したまま PR にする / もう 1 回直させる / 自分で直す」を `pending_decisions.md` に積む（指摘は `{REVIEW_FILE}` のパスで示す）。上限まで回るのはレビュアーと implementer の判断が食い違っているときで、続けても収まらない
 
-**uncertainty の判定:** レビュアーは `uncertainty_verdicts` で 1 件ずつ `resolved` / `needs_human` を返す。`needs_human` が 1 件でもあるときだけ AskUserQuestion で人間に確かめる。
+**uncertainty の判定:** レビュアーは `uncertainty_verdicts` で 1 件ずつ `resolved` / `needs_human` を返す。`needs_human` は `pending_decisions.md` に積み、implementer が選んだ案（またはレビュアーの推奨）で PR・マージまで進める。
 
 **グループの範囲で直せない指摘（人間に聞かない）:**
 
@@ -219,6 +240,7 @@ Cross は infra 層 → app 層の順を保つ。修正でインターフェー�
 - ラベル: Infra → `infra`、App → `app`、Cross → infra 層に `infra,cross`、app 層に `app,cross`
 - タイトル例: `feat(infra): グループ N Infra Dev タスク実装` / `test(app): グループ N App QA タスク実装`（part は `part K` を入れる）
 - **Draft にしない**（`--draft` を付けない）。レビューはエージェントが済ませている。プロジェクトの CLAUDE.md に「PR は Draft」とあっても、スキル経由の PR を例外とする記述があればそちらに従う（無ければ人間に確認する）
+- 説明は短くする（グループ・層・タスクの ID、統合検証の件数 1 行、`{REVIEW_FILE}` / `{RESULT_FILE}` のパス、人の作業があればその 1 行）。詳細はファイルにあるので書き写さない。本文はファイルに書いて `--body-file` で渡す
 - `--base "$BASE_BRANCH"` を明示し、PR 番号を `implementation_progress.pr_numbers["group-N"]` に**配列**で追記する
 
 ---
@@ -231,7 +253,7 @@ PR 作成後、このグループの worktree をすべて（QA の part も）`
 
 ### STEP G: ドキュメント誤りの記録とマージ
 
-**doc_issues:** 完了 JSON に `doc_issues` があれば `doc/process/doc_issues.md` に記録する。**グループの完了ごとには人間に聞かず**、全グループ完了後にまとめて聞く（例外と判断の 3 択・doc-fix フローは [reference/doc-issues.md](reference/doc-issues.md)）。
+**doc_issues:** `{RESULT_FILE}` に `doc_issues` があれば `doc/process/doc_issues.md` に記録する。**その場では人間に聞かず**、保留中の判断と一緒に聞くタイミングでまとめて聞く（例外と判断の 3 択・doc-fix フローは [reference/doc-issues.md](reference/doc-issues.md)）。
 
 **自動マージ（非ブロッキング）:** **人間による**マージは待たない。まず hook の有無を確かめる：
 
@@ -260,7 +282,7 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
 
 ## 全グループ完了後
 
-1. **たまった doc_issues をまとめて聞く**（[reference/doc-issues.md](reference/doc-issues.md)）。「実装側で対応する」が 1 件でもあれば Plan Repair に回し、追加グループが終わってから次へ進む
+1. **たまった doc_issues と保留中の判断をまとめて聞く**（バッチの区切りで聞いたものは除く。[reference/pending-decisions.md](reference/pending-decisions.md)・[reference/doc-issues.md](reference/doc-issues.md)）。「実装側で対応する」や仮の扱いを覆す回答が 1 件でもあれば Plan Repair に回し、追加グループが終わってから次へ進む
 2. **リモートの実際の状態を確かめる**（state.json を更新する前に。しないと hook `state-sync.sh` が test への移行を拒否する）：
    ```bash
    git switch {base_branch} && git pull --ff-only
@@ -276,6 +298,15 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
 
 ---
 
+## オーケストレーターの文脈
+
+オーケストレーターは、エージェントからの通知を 1 通読むたびに、それまでの会話全体を読み直す。会話に入る量がそのまま利用量になるので、次を守る（2026-10 の run では、文脈の 3 割がエージェントの完了報告、4 割がオーケストレーター自身のテスト実行・コード修正・PR 本文の入出力だった）。
+
+- **結果はファイルで受け取る**: implementer は `{RESULT_FILE}`、レビュアーは `{REVIEW_FILE}` に全文を書き、最終回答は 1 行。オーケストレーターは `check-result.sh` や `jq` で要点だけを読み、別のエージェントにはパスで渡す
+- **通知に文章で応えない**: 待機中・途中経過の通知（`idle_notification` など）で状態が変わっていなければ、何も書かずに次の通知を待つ。人間への報告は、グループの完了・保留・バッチの区切りのときだけ 1〜2 行で書く
+- **自分で実装しない**: worktree のコード・テストの修正、統合検証のテスト実行は implementer に頼む。オーケストレーターが直してよいのは `doc/process/` の記録と state.json だけ
+- **出力を絞る**: `gh` は `--json … -q` で必要な項目だけ、テスト・lint は終了コードと件数の行だけ（`| tail -n 5`）、ファイルは `sed -n` / `grep` で必要な行だけ読む。仕様書・チェックリストを丸ごと Read しない
+
 ## エラーハンドリング
 
 | 状況 | 対応 |
@@ -283,5 +314,5 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
 | worktree 作成失敗 | 既存 worktree を消してから再試行 |
 | push 失敗 | 人間に報告して解消後に再 push |
 | lint エラーが解消できない | 人間に報告 |
-| ブロッカー発生 | エージェントを止めて人間に判断を仰ぐ |
+| ブロッカー発生 | そのグループを保留にし、`pending_decisions.md` に積む。ほかのグループは止めない |
 | state.json とリモートの食い違い（worktree 作成失敗・ブランチ衝突・state.json 破損） | GitHub 側のマージ状態を正として復旧する。[reference/recovery.md](reference/recovery.md) |

@@ -27,7 +27,7 @@
 | プレースホルダー | 入れるもの | 渡す相手 |
 |---|---|---|
 | `{CONVENTIONS}` | 各ファイルの「## 書き方」セクション（言語 → フレームワーク → `doc/conventions.md` の順に連結） | implementer（Dev / QA） |
-| `{REVIEW_CHECKLIST}` | 各ファイルの「## レビューチェックリスト」の表を連結 | reviewer |
+| `{REVIEW_CHECKLIST}` | 各ファイルの「## レビューチェックリスト」の表を連結 | reviewer、implementer（完了前のセルフレビュー） |
 | `{STANDARD_COMMANDS}` | 最も具体的なファイル（フレームワーク > 言語）の「## 標準コマンド」 | 両方 |
 
 `doc/process/conventions_verified.md`（version-check の結果）があれば、「変わった項目」「新しい推奨」を `{CONVENTIONS}` と `{REVIEW_CHECKLIST}` の先頭に、「非推奨になった API」を `{REVIEW_CHECKLIST}` に `version/deprecated-*`（major）として追加する。

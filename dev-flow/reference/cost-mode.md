@@ -63,9 +63,13 @@ hook の `pre-agent-check.sh` が起動前に、プランモード・下流ス�
 | # | アクター | 動作 |
 |---|---|---|
 | 1 | `stage-implementation-agent` | グループから `status: "blocked"` / `blocker_type: "plan_repair_needed"` を受け取る |
-| 2 | `stage-implementation-agent` | 要件・仕様の解釈が変わらない修正なら人間に聞かずに承認扱い、変わるものだけ「承認 / 却下 / 全体再生成」を人間に出す（`plan-repair.md`）。承認なら `next_stage` を `"plan_repair"` にして終了 |
+| 2 | `stage-implementation-agent` | 要件・仕様の解釈が変わらない修正なら人間に聞かずに承認扱い、変わるものは「承認 / 却下 / 全体再生成」を `pending_decisions.md` に積んで発端のグループを保留にする（`plan-repair.md`）。聞くタイミングで「## 人間への質問」として返し、承認なら `next_stage` を `"plan_repair"` にして終了 |
 | 3 | オーケストレーター | `next_stage = "plan_repair"` を見て `stage-plan-repair-agent`（consistency の mini モード）を起動 |
 | 4 | `stage-plan-repair-agent` | 未着手グループのチェックリストだけ作り直し、`next_stage` を `"implementation"` に戻して終了 |
 | 5 | オーケストレーター | implementation を未着手グループから再開 |
 
 発動は最大 3 回。超えたら `requirement_ambiguity` として人間にエスカレーションする（`dev-flow-implementation/reference/plan-repair.md`）。
+
+## implementation のバッチ
+
+`stage-implementation-agent` はバッチ（`implementation_progress.batches`）の区切りで最終回答を返す。`next_stage` が `implementation` のままで「## 人間への質問」が無ければ、オーケストレーターは同じエージェントをそのまま起動し直して次のバッチを続けさせる（人間には聞かない）。ステージエージェントの文脈は起動ごとに空になるので、quality のように `/clear` を頼む必要は無い。

@@ -56,7 +56,10 @@
       "group-1": [101, 102],
       "group-2": [103, 104],
       "group-3": []
-    }
+    },
+    "parked_groups": {"group-3": ["P-2"]},
+    "batches": [["group-1", "group-2", "group-3"]],
+    "current_batch": 0
   },
   "agent_hierarchy": {
     "max_depth": 4,
@@ -93,6 +96,8 @@
 | `implementation_progress` | implementation 実行中のみ存在。完了時に削除 |
 | `base_branch` | implementation の PR をマージしたベースブランチ（`feature/*`）。implementation 完了時に `implementation_progress.base_branch` から写す。test / compliance が「origin の最新に揃えてからテストする」ために使う（`dev-flow-test/SKILL.md` STEP 0.5） |
 | `implementation_progress.pr_numbers` | 各グループの PR 番号の**配列**（Infra/App は 2 本、Cross は 4 本）。PR 作成後に stage-implementation-agent が書き込む。`completed_groups` に含まれないグループの番号が「マージ待ち」を表す |
+| `implementation_progress.parked_groups` | 人間の判断待ちで保留にしたグループと、`doc/process/pending_decisions.md` の番号。保留グループと、それに `depends_on` でつながるグループは起動しない（`dev-flow-implementation/reference/pending-decisions.md`） |
+| `implementation_progress.batches` / `current_batch` | グループが 10 個を超えるときのバッチ分け（最大 8 個ずつ）と、いま実行しているバッチの添字。バッチの区切りで保留中の判断をまとめて聞き、ステージを終える（文脈を空にして次のバッチへ） |
 | `agent_hierarchy` | 階層深さ監視。max_depth=4 を超えたらエスカレーション |
 | `harness` | 再現性メタデータ。requirements 開始時に追加、各ステージ完了時に stage_history を更新 |
 

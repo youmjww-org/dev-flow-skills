@@ -38,7 +38,7 @@ disable-model-invocation: true
 **quality はオーケストレーター自身が Opus であることが前提。** frontmatter の `model` / `effort` は `/dev-flow` を起動したターンにしか効かない。
 
 - ステージを始める前に、自分（今このターンを動かしているモデル）が Opus かを確かめる。違えば何も実行せず「quality は Opus 前提です。`/dev-flow` を打ち直すか、`/model opus` に切り替えてから再実行してください（`--profile=cost` なら今のモデルのままでも進められます）」と伝えて終える
-- 人間への質問は AskUserQuestion で行い、同じターンの中で続ける。止まるときは「続きは `/dev-flow` で再開してください」と案内する
+- 人間への質問は AskUserQuestion で行い、同じターンの中で続ける（implementation の途中は聞くタイミングまで積んでおく）。止まるときは「続きは `/dev-flow` で再開してください」と案内する
 
 ## ステージと変更種別
 
@@ -64,7 +64,7 @@ disable-model-invocation: true
 
 最初のステージは `feature` / `change` → `requirements`、`fix` → `spec`、`refactor` → `consistency`。`fix` / `refactor` は要件定義書と `tech_stack` が既にあることが前提（無ければ先に bootstrap）。
 
-**人間が確認するのは 2 か所だけ**: requirements の承認と、spec のレビュー（どちらも `feature` / `change` のとき）。implementation で見つかった仕様書の不足（doc_issues）は、グループごとに聞かず全グループ完了後に 1 回でまとめて聞く。`fix` / `refactor` は最初のステージから compliance まで止まらずに進む。それ以外で止まるのは、自動では片付かないことが起きたときだけ（hook の deny・エスカレーション・Plan Repair・implementer の `confidence < 0.5`・要件の意味を変えないと直せない指摘）。consistency の指摘は周回ごとの既定の方針で自動的に直し、implementer の `uncertainty_points` はレビュアーに判定させる。下流スキルにこれより多く人間に聞く記述が残っていたら、この段落を優先する。
+**人間が確認するのは 2 か所だけ**: requirements の承認と、spec のレビュー（どちらも `feature` / `change` のとき）。`fix` / `refactor` は最初のステージから compliance まで止まらずに進む。**implementation の途中では AskUserQuestion を出さない。** 人間の判断が要る事柄（仕様書の不足（doc_issues）・hook の deny・エスカレーション・Plan Repair・implementer の `confidence < 0.5`・レビュアーの `needs_human`・取り消しにくい操作の許可）は、仮に決めて `doc/process/pending_decisions.md` に積み、先へ進めないグループだけを保留にしてほかのグループを進める。まとめて聞くのは、起動できるグループが無くなったときとバッチの区切りだけ（`dev-flow-implementation/reference/pending-decisions.md`）。聞くたびにフロー全体が止まり、深夜に 1 問出すと朝まで何も進まないため。consistency の指摘は周回ごとの既定の方針で自動的に直し、implementer の `uncertainty_points` はレビュアーに判定させる。下流スキルにこれより多く人間に聞く記述が残っていたら、この段落を優先する。
 
 ## 状態管理
 
@@ -220,7 +220,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 
 ### STEP 5: 完了と次のステージ
 
-1. implementation のグループ完了通知では、最終回答の JSON で判定する: `confidence >= 0.5` → 進む（`needs_human_review = true` や `uncertainty_points` はレビュアーに 1 件ずつ判定させる。implementation STEP D）/ `confidence < 0.5`、またはレビュアーが `needs_human` と判定した uncertainty がある → AskUserQuestion で人間に確かめる
+1. implementation のグループ完了通知では、`check-result.sh` の判定で進める（`needs_human_review = true` や `uncertainty_points` はレビュアーに 1 件ずつ判定させる。implementation STEP D）。`confidence < 0.5`、またはレビュアーが `needs_human` と判定した uncertainty があれば、その場では聞かずに `pending_decisions.md` に積む（implementation「グループ実行ループ」）
 2. 「✓ {stage} 完了」と一行表示する。チェックリストのステージ進捗は hook が同期する（未導入なら `[ ]` → `[x]` を自分で）
 3. 次の動作：
 

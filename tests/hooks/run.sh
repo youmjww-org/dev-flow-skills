@@ -846,5 +846,35 @@ assert_not_contains "--all でも _glossary.md を検証しない" "$out" "_glos
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------
+# check-result.sh（implementation STEP C の完了 JSON の判定）
+# ---------------------------------------------------------------------------
+section "check-result.sh"
+CHECK="$ROOT/dev-flow-implementation/scripts/check-result.sh"
+dir="$(mktemp -d)"
+jq -n '{status:"completed",confidence:0.8,result:{commits:["a1"],lint:{exit_code:0},unit_tests:{failed:0},coverage:{changed_functions_below_threshold:[]},mutation:[{killed:true}]}}' > "$dir/dev.json"
+out="$("$CHECK" dev "$dir/dev.json")"; rc=$?
+assert_eq "条件を満たす Dev の完了 JSON は 0" "$rc" "0"
+assert_not_contains "条件を満たせば NG が無い" "$out" "NG"
+jq '.result.mutation[0].killed = false' "$dir/dev.json" > "$dir/dev-survived.json"
+out="$("$CHECK" dev "$dir/dev-survived.json")"; rc=$?
+assert_eq "生き残った変異があれば 1" "$rc" "1"
+assert_contains "生き残った変異を NG にする" "$out" "NG ミューテーション"
+jq 'del(.result.lint)' "$dir/dev.json" > "$dir/dev-nolint.json"
+out="$("$CHECK" dev "$dir/dev-nolint.json")"
+assert_contains "lint の欠損を NG にする" "$out" "NG lint"
+jq -n '{status:"completed",result:{lint:{exit_code:0},tests:{passed:1,failed:9},mutation:[]}}' > "$dir/qa.json"
+"$CHECK" qa "$dir/qa.json" >/dev/null; rc=$?
+assert_eq "QA は仕様テストが失敗していても 0（Dev 実装待ち）" "$rc" "0"
+jq '.result.integration = {failed: 2}' "$dir/qa.json" > "$dir/qa-int.json"
+out="$("$CHECK" qa "$dir/qa-int.json")"
+assert_contains "統合検証の失敗を NG にする" "$out" "NG 統合検証"
+jq -n '{status:"blocked",blocker_type:"requirement_ambiguity",reason:"x"}' > "$dir/blocked.json"
+out="$("$CHECK" dev "$dir/blocked.json")"
+assert_contains "blocked は status と blocker_type を出す" "$out" "NG status=blocked blocker_type=requirement_ambiguity"
+out="$("$CHECK" dev "$dir/none.json")"
+assert_contains "ファイルが無ければ NG" "$out" "NG 完了 JSON がありません"
+rm -rf "$dir"
+
+# ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -17,7 +17,7 @@
    ${CLAUDE_SKILL_DIR}/scripts/ensure-worktree.sh int {team} N dev/{team}-group-N qa/{team}-group-N
    ```
    - **終了コード 3（コンフリクト）の場合**: 同じパスのファイルを Dev/QA 双方が作っている。テストファイルなら QA 側を正とし、Dev implementer に「そのファイルを `git rm` して再コミット」を `SendMessage` で依頼する。実装ファイルなら QA implementer に QA 側の変更を取り消させる。直ったら 1 からやり直す
-2. int worktree（`{MAIN_DIR}/../worktree-int-{team}-group-N`）で **Dev のユニットテストと QA の仕様テストの両方**・lint・型検査を**実際に実行**する（`tech_stack` の標準コマンド。依存物が無ければ `composer install` / `npm install` 等を先に行う）。あわせて規約の「標準コマンド（分岐カバレッジ）」で統合カバレッジを計測し、参考値として STEP E の PR 説明に書く（ゲートは Dev の `result.coverage` で既に掛かっているので、ここでは記録のみ）
+2. int worktree（`{MAIN_DIR}/../worktree-int-{team}-group-N`）で **Dev のユニットテストと QA の仕様テストの両方**・lint・型検査を**実際に実行**する（`environment.md` の「スイート全体のコマンド」。無ければ `tech_stack` の標準コマンド。スイート全体は 1 回だけ流し、失敗したら直したあと失敗したファイルだけ流し直す。依存物が無ければ `composer install` / `npm install` 等を先に行う）。あわせて規約の「標準コマンド（分岐カバレッジ）」で統合カバレッジを計測し、参考値として STEP E の PR 説明に書く（ゲートは Dev の `result.coverage` で既に掛かっているので、ここでは記録のみ）
 3. 結果で分岐：
    | 結果 | 対応 |
    |---|---|

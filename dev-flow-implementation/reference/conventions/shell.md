@@ -54,7 +54,7 @@
 | format | `shfmt -d -i 2 .` |
 | lint | `shellcheck -S warning $(git ls-files '*.sh' '*.bats')` |
 | 型検査 | —（なし） |
-| test | `bats tests/`（bats が無ければ `for t in tests/*_test.sh; do bash "$t" || exit 1; done`） |
+| test | `bats -r -j "$(nproc)" --no-parallelize-within-files tests/`（`-j` には GNU parallel が要る。無ければ `bats -r tests/`。bats が無ければ `for t in tests/*_test.sh; do bash "$t" || exit 1; done`） |
 
 ## 出典と対象バージョン
 

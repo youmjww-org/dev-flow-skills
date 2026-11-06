@@ -72,7 +72,7 @@ baseline_commit: `{BASELINE_COMMIT}`
 - `{TECH_STACK.linter}` / `{TECH_STACK.formatter}` を実行してエラーをすべて解消する。空なら下の標準コマンドを使う：
 {STANDARD_COMMANDS}
 - 最後に実行したコマンドと終了コードを `result.lint` に必ず書く（0 以外だとレビューに進めない）
-- **作業中のテスト実行は、変更したファイルに関係するテストだけ**（例: `pytest tests/unit/test_x.py -k name`、`vitest run src/x.test.ts`、`go test ./pkg/x -run TestY`、`pest --filter=Y`）。スイート全体とカバレッジ計測は完了 JSON を返す直前に 1 回だけ。レビュー指摘の修正で再開されたときも同じ
+- **作業中のテスト実行は、変更したファイルに関係するテストだけ**（例: `pytest tests/unit/test_x.py -k name`、`vitest run src/x.test.ts`、`go test ./pkg/x -run TestY`、`pest --filter=Y`）。スイート全体とカバレッジ計測は完了 JSON を返す直前に 1 回だけ（実行環境ノートに「スイート全体のコマンド」があればそれを使う）。レビュー指摘の修正で再開されたときも同じ
 - 完了前に、規約の「標準コマンド（分岐カバレッジ）」で**変更した関数**の分岐カバレッジを測り、閾値（`doc/conventions.md` の `coverage_threshold`、既定 0.80）未満の関数を `result.coverage.changed_functions_below_threshold` に列挙する（空でないとレビューに進めない。テストを減らして数字を上げるのは禁止）
 
 **4. タスク単位コミット**（worktree ディレクトリ内で git commit）

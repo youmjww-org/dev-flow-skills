@@ -93,6 +93,16 @@
             "statusMessage": "dev-flow 完了記録"
           }
         ]
+      },
+      {
+        "matcher": "Bash|Read|Agent|SendMessage|TaskStop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/skills/dev-flow/hooks/context-guard.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [

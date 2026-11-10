@@ -19,6 +19,8 @@
 **見ること:**
 - **削除・スキップ**: `git diff` の削除行を見て、`test/no-delete` / `test/no-skip` / `test/expected-from-impl` に当たるものは blocker
 - **TC 網羅**（`test/tc-coverage`）: テスト定義書 frontmatter の `test_cases[].id`（このグループ・part の担当分）と worktree のテストの TC-ID を突き合わせ、欠けが無いか
+- **1 TC = 1 テスト関数**（`test/one-tc-one-test`）: TC-ID ごとにテスト関数を数え、2 つ以上あれば major。`fix` には「parametrize にまとめる」か「テスト定義書に TC-NNN を追加してから実装」のどちらかを具体的に書く。TC に入出力の組が複数あるときのテーブル駆動の行は 1 関数として数える
+- **補助関数の再利用**（`test/reuse-helpers`）: 差分で追加した `test_` 以外の `def`・フィクスチャごとに `grep -rn` で同じ役目の既存のもの（`conftest.py`・`helpers*.py`・他のテストファイル）を探す。あれば major で、`fix` に import 先（ファイルと関数名）を書く。グループ番号付きの補助モジュール（`helpers_gNN.py`）の新規作成も major。偶然似ているだけのものはまとめさせない
 - **置き場**（`test/unit-vs-spec-split`）: 実装の内部関数を直接呼ぶユニットテストや `tests/Unit/**` を書いていないか（Dev の担当。同じパスでコンフリクトする）
 - **ミューテーション**（`test/mutation-checked`）: 統合検証はこのレビューと並行して動くので、`{RESULT_FILE}` の `result.mutation` がまだ空なら見なくてよい（オーケストレーターが統合検証の後に `check-result.sh` で確かめる）。入っていれば、 1〜5 件の記録があり、全件 `killed: true` か（QA worktree には実装が無いので再現はしない）。件数が 5 件以下であることは指摘しない
 - **規約チェックリスト**のうち `test/*` と各言語のテスト関連ルール（`*/table-driven` `*/parametrize` `*/test-*` 等）

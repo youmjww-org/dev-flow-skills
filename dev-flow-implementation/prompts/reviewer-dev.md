@@ -52,7 +52,7 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 {REVIEW_CHECKLIST}
 （言語・フレームワーク・プロジェクト規約のルール ID・重大度・確認方法。「確認方法」の grep は実際に実行して確認する）
 
-**テストへの要求（Dev レビューで見る）:** この実装で増えた・変わった `if` / `switch` / 早期 return / `catch` / 三項演算子を列挙し、それぞれを通る**ユニットテストが Dev worktree にある**か確認する（`test/branch-coverage`。置き場は `testing.md` の「Dev と QA のテスト分担」）。無ければ `changes_requested` にして `fix` に「ユニットテスト追加: {関数}: {分岐の条件}」と書く。**Dev implementer に回る**（QA には回さない。QA は実装の分岐を知らない）。あわせて Dev が仕様テスト（`tests/Feature/**` / `src/App.test.tsx` / `e2e/**` 等、TC-ID 付き）を書いていないか確認し、書いていれば `test/unit-vs-spec-split` として差し戻す（QA と同じパスにファイルが生まれてコンフリクトする）。出力の**形式**（日時フォーマット・レスポンスのラップ・エラーメッセージ文言）が仕様書どおりかのユニットテストがあるかも見る（形式のずれは Feature テストでは見逃しやすい）
+**テストへの要求（Dev レビューで見る）:** この実装で増えた・変わった `if` / `switch` / 早期 return / `catch` / 三項演算子を列挙し、それぞれを通る**ユニットテストが Dev worktree にある**か確認する（`test/branch-coverage`。置き場は `testing.md` の「Dev と QA のテスト分担」）。無ければ `changes_requested` にして `fix` に「ユニットテスト追加: {関数}: {分岐の条件}」と書く。**Dev implementer に回る**（QA には回さない。QA は実装の分岐を知らない）。あわせて Dev が仕様テスト（`tests/Feature/**` / `src/App.test.tsx` / `e2e/**` 等、TC-ID 付き）を書いていないか確認し、書いていれば `test/unit-vs-spec-split` として差し戻す（QA と同じパスにファイルが生まれてコンフリクトする）。出力の**形式**（日時フォーマット・レスポンスのラップ・エラーメッセージ文言）が仕様書どおりかのユニットテストがあるかも見る（形式のずれは Feature テストでは見逃しやすい）。差分で追加したテストの補助関数・フィクスチャ（`test_` 以外の `def`）は、保守性視点と同じく `grep -rn` で同じ役目の既存のものを探し、あれば `test/reuse-helpers`（major、`fix` に import 先）。分岐網羅はケースの数で見る。入力と期待値だけが違うケースを別関数で並べていても、それだけでは差し戻さない（`py/parametrize` 等の minor）
 
 **出力（SendMessage は使わない）:**
 

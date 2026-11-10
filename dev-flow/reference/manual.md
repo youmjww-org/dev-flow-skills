@@ -88,6 +88,7 @@
 | test ステージでの書き込み前 | `test-stage-guard.sh` | テストコードとテスト定義書の変更を拒否 |
 | `gh pr merge` の前 | `pr-merge-guard.sh` | 自動マージ条件を検証（`--man merge`） |
 | Bash の前 | `state-write-guard.sh` | `state.json` を Bash（リダイレクト・`mv`・`sed -i` 等）で書くのを拒否。Write / Edit で書けば `state-sync.sh` が検証と記録を行う |
+| Bash / Read / Agent / SendMessage / TaskStop の後 | `context-guard.sh` | オーケストレーターの文脈の大きさを `doc/process/.context_status` に書き、閾値（`DEV_FLOW_CONTEXT_LIMIT`、既定 35 万トークン）を越えたら知らせる。implementation ではバッチを早めに締め、consistency の後なら implementation の前に `/clear` を頼む |
 | セッション開始・応答完了 | `session-start.sh` / `stop-summary.sh` | 進行中の run と次のアクションを表示 |
 
 hook が入っていない（`setup.sh --no-hooks`）環境では自動マージをしない。詳細は `~/.claude/skills/dev-flow/hooks/README.md`。

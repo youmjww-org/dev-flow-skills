@@ -902,6 +902,125 @@ assert_contains "取り込みでコンフリクトしたら 3" "$out" "conflict=
 assert_empty "コンフリクトしたら merge を取り消す" "$(git -C "$dir/worktree-dev-app-group-3" status --porcelain)"
 rm -rf "$dir"
 
+section "group-context.py"
+GC="$ROOT/dev-flow-implementation/scripts/group-context.py"
+dir="$(new_project)"
+mkdir -p "$dir/doc/requirements" "$dir/doc/test-spec" "$dir/doc/api-spec" "$dir/doc/internal"
+cat > "$dir/doc/process/task_checklist.md" <<'EOF_CK'
+# タスクチェックリスト
+
+### グループ 3 (App) — depends_on: []
+
+前書き。
+
+#### Dev タスク (App)
+- [ ] API-002 を実装（REQ-010〜REQ-011。API 仕様書 2.3）
+
+#### QA タスク (App) — part 1
+- [ ] TC-020: 正常系
+#### QA タスク (App) — part 2
+- [ ] TC-021: 異常系
+
+### グループ 4 (App) — depends_on: [group-3]
+#### Dev タスク (App)
+- [ ] API-009
+EOF_CK
+cat > "$dir/doc/requirements/r.md" <<'EOF_RQ'
+# 要件
+## REQ-010: 一つ目
+本文 10
+## REQ-011: 二つ目
+本文 11
+## REQ-012: 対象外
+本文 12
+EOF_RQ
+cat > "$dir/doc/test-spec/t.md" <<'EOF_TS'
+---
+doc_type: test-spec
+test_cases:
+  - id: TC-020
+    covers: [REQ-010]
+  - id: TC-021
+    covers: [REQ-011]
+---
+# テスト定義書
+## 3 章（REQ-010〜REQ-011）
+### TC-020: 正常系
+TC-020 本文
+### TC-021: 異常系
+TC-021 本文
+EOF_TS
+cat > "$dir/doc/api-spec/a.md" <<'EOF_API'
+# API
+## 2.2 API-001: 対象外
+本文 1
+## 2.3 一覧の形式
+本文 2.3
+```
+## API-009 はコードブロック内なので見出しではない
+```
+## 2.4 API-002: 取得
+本文 2
+EOF_API
+printf '# キャッシュ\n## 1. 概要\n' > "$dir/doc/internal/spec_cache.md"
+out="$(cd "$dir" && python3 "$GC" 3 dev app)"
+f="$dir/doc/process/injection/group-3-dev-app.md"
+assert_contains "1 行の要約を出す" "$out" "OK group-context:"
+assert_contains "範囲の REQ を展開して拾う" "$(cat "$f")" "REQ-011: 二つ目"
+assert_not_contains "タスクに無い REQ は拾わない" "$(cat "$f")" "REQ-012"
+assert_contains "ID の節を拾う" "$(cat "$f")" "本文 2"
+assert_contains "「API 仕様書 2.3」の節番号を拾う" "$(cat "$f")" "本文 2.3"
+assert_not_contains "Dev の切り出しに QA のタスクを入れない" "$(cat "$f")" "TC-020: 正常系"
+out="$(cd "$dir" && python3 "$GC" 3-p2 qa app)"
+f="$dir/doc/process/injection/group-3-p2-qa-app.md"
+assert_contains "QA の part 2 のタスクだけ" "$(cat "$f")" "TC-021: 異常系"
+assert_not_contains "part 1 のタスクは入れない" "$(sed -n '/^## チェックリスト/,/^## 要件/p' "$f")" "TC-020: 正常系"
+assert_contains "frontmatter の該当 TC を入れる" "$(cat "$f")" "- id: TC-021"
+assert_not_contains "テスト定義書の章見出しの REQ 参照では章を丸ごと拾わない" "$(cat "$f")" "TC-020 本文"
+out="$(cd "$dir" && python3 "$GC" 4 dev app)"
+assert_contains "コードブロック内の # は見出しにしない（拾えなければ WARN）" "$out" "WARN"
+out="$(cd "$dir" && python3 "$GC" 9 dev app)"
+assert_contains "グループが無ければ NG" "$out" "NG group-context"
+rm -rf "$dir"
+
+section "context-guard.sh"
+dir="$(new_project)"
+write_state "$dir" implementation
+tr_file="$dir/transcript.jsonl"
+# transcript_line <input> <cache_read> <cache_creation>
+transcript_line() { jq -nc --argjson i "$1" --argjson r "$2" --argjson c "$3" '{type:"assistant",message:{id:"m",usage:{input_tokens:$i,cache_read_input_tokens:$r,cache_creation_input_tokens:$c}}}'; }
+ctx_json() { jq -n --arg t "$1" --arg c "$dir" --arg a "${2:-}" '{tool_name:"Bash",cwd:$c,transcript_path:$t} + (if $a == "" then {} else {agent_id:$a} end)'; }
+{
+  transcript_line 10 100000 5000
+  # サブエージェントの usage を含む Agent の結果（user 行）は数えない
+  jq -nc '{type:"user",toolUseResult:{usage:{input_tokens:900000}}}'
+} > "$tr_file"
+out="$(DEV_FLOW_CONTEXT_LIMIT=350000 run_hook context-guard.sh "$dir" "$(ctx_json "$tr_file")")"
+assert_empty "閾値未満なら何も出さない" "$out"
+assert_contains "閾値未満でも状態を書く" "$(cat "$dir/doc/process/.context_status")" "tokens=105010"
+assert_contains "閾値未満は over=0" "$(cat "$dir/doc/process/.context_status")" "over=0"
+transcript_line 10 340000 20000 >> "$tr_file"
+out="$(DEV_FLOW_CONTEXT_LIMIT=350000 run_hook context-guard.sh "$dir" "$(ctx_json "$tr_file")")"
+assert_contains "閾値を越えたら知らせる" "$out" "バッチを締めて"
+assert_contains "越えたら over=1" "$(cat "$dir/doc/process/.context_status")" "over=1"
+assert_contains "越えたら flow.log に context_high" "$(cat "$dir/doc/process/flow.log")" "event=context_high tokens=360010"
+out="$(DEV_FLOW_CONTEXT_LIMIT=350000 run_hook context-guard.sh "$dir" "$(ctx_json "$tr_file")")"
+assert_empty "越えたままなら 2 回目は出さない" "$out"
+transcript_line 10 50000 0 >> "$tr_file"
+run_hook context-guard.sh "$dir" "$(ctx_json "$tr_file")" >/dev/null
+assert_contains "/clear 後に下がれば over=0 に戻る" "$(cat "$dir/doc/process/.context_status")" "over=0"
+rm -f "$dir/doc/process/.context_status"
+transcript_line 10 900000 0 >> "$tr_file"
+out="$(run_hook context-guard.sh "$dir" "$(ctx_json "$tr_file" sub-1)")"
+assert_empty "サブエージェントの呼び出しでは何もしない" "$out$(cat "$dir/doc/process/.context_status" 2>/dev/null)"
+mkdir -p "$dir/s/subagents" && cp "$tr_file" "$dir/s/subagents/agent-x.jsonl"
+out="$(run_hook context-guard.sh "$dir" "$(ctx_json "$dir/s/subagents/agent-x.jsonl")")"
+assert_empty "subagents/ 配下の transcript では何もしない" "$out"
+write_state "$dir" completed
+out="$(run_hook context-guard.sh "$dir" "$(ctx_json "$tr_file")")"
+assert_empty "run が完了していれば何もしない" "$out"
+rm -rf "$dir"
+
 # ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

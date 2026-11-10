@@ -1,6 +1,6 @@
 # Dev レビュアー プロンプト
 
-モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{DIFF_BASE}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
+モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}` `{GROUP_CONTEXT}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{DIFF_BASE}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
 
 ---
 
@@ -10,6 +10,7 @@ Dev エージェントとは意図的に異なる観点でレビューします�
 対象 worktree: {MAIN_DIR}/../worktree-dev-{TEAM}-group-{GROUP_N}
 要件定義書: {REQUIREMENTS_PATHS}
 仕様書: {SPEC_PATH}
+担当分の仕様: {GROUP_CONTEXT}（implementer に渡した切り出し。チェックリストの担当タスクと、タスクに出てくる ID の節。**先にこれを読み、要件定義書・仕様書の全文は Read しない**。足りない節は `grep -n` で探して必要な行だけ読む）
 技術スタック: {tech_stack}
 ベースブランチ: {BASE_BRANCH}
 差分の基点: {DIFF_BASE}（このグループの変更だけを見る起点。依存先のマージ前に始めたグループでは、取り込んだ依存先の変更より後）

@@ -14,6 +14,7 @@
 | （hook ではない） | — | `verify-remote-state.sh [--base BRANCH] [--expect-merged] [PR番号...]` | 状況報告・ステージ移行の前の確認。`git fetch` してブランチの ahead / behind、PR の state と CI の結果を OK / NG で 1 行ずつ出す。NG があれば exit 1。`flow.log` に `remote_verified` を記録（`state-sync.sh` の test 移行ゲートが参照） |
 | （hook ではない） | — | `mark-group-done.sh <N> [PR番号...] [--no-commit]` | implementation STEP H の機械的作業。グループ N のチェックリスト（全一覧も）を `[x]` に、`state.json` の `completed_groups` / `active_worktrees` / `pr_numbers` を更新し、1 コミットする。冪等 |
 | `PostToolUse` | `Agent` | `agent-complete.sh` | `stage-*-agent` 完了を `flow.log` に記録し所要時間を算出。requirements 完了時は人間確認ゲートを念押し |
+| `PostToolUse` | `Bash\|Read\|Agent\|SendMessage\|TaskStop` | `context-guard.sh` | オーケストレーター（メインの会話）の文脈の大きさを transcript の直近の usage から測り、`doc/process/.context_status`（`over=0\|1` / `tokens=` / `limit=`）に書く。閾値（`DEV_FLOW_CONTEXT_LIMIT`、既定 350000）を下から越えたときだけ `additionalContext` で知らせ、`flow.log` に `context_high` を記録する。サブエージェントの呼び出しでは何もしない |
 | `PreToolUse` | `Write\|Edit\|NotebookEdit` | `test-stage-guard.sh` | `next_stage == test` のとき、テストファイル（`*_test.go` / `test_*.py` / `*.test.ts` / `tests/` 等）と `doc/test-spec/` への書き込みを `deny`。test ステージはプロダクションコードしか直せない（DocDD） |
 | `PreToolUse` | `Bash` | `state-write-guard.sh` | `doc/process/state.json` を Bash（リダイレクト・`mv` / `cp`・`tee`・`sed -i`・スクリプトの `open(..., "w")`）で書き換えるのを `deny`。Bash で書くと `state-sync.sh`（Write / Edit のみ）が動かず、検証と `flow.log` への遷移記録が抜けるため。読むだけのコマンドは素通り |
 | `PreToolUse` | `Bash` | `dev-wait-guard.sh` | `next_stage == implementation` のとき、Dev のブランチ・worktree（`dev/{app,infra}-group-N` / `worktree-dev-`）を `sleep` / `until` で待つコマンドを `deny`。QA は Dev を待たずに仕様書から書き、突き合わせは統合検証で行う。1 回だけの `git log` 等の確認は素通り |
@@ -24,7 +25,7 @@
 
 ## 生成されるファイル
 
-- `doc/process/flow.log` — 時系列イベントログ（`event=agent_start|agent_complete|stage_transition|escalation|doc_invalid|auto_merge_allowed|test_stage_write_denied|dev_wait_denied|test_lint_failed|agent_spawned|group_done|remote_verified|stage_gate_denied`）。デバッグと所要時間の把握に使います。git 管理して構いません。
+- `doc/process/flow.log` — 時系列イベントログ（`event=context_high|agent_start|agent_complete|stage_transition|escalation|doc_invalid|auto_merge_allowed|test_stage_write_denied|dev_wait_denied|test_lint_failed|agent_spawned|group_done|remote_verified|stage_gate_denied`）。デバッグと所要時間の把握に使います。git 管理して構いません。
 
 ## Slack 通知（opt-in）
 

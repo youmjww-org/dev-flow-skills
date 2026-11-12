@@ -799,13 +799,27 @@ out="$(run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/proces
 assert_empty "state.json が無いプロジェクトでは何もしない" "$out"
 rm -rf "$dir"
 
-# flow.log は git で追跡しない（新しく作るとき doc/process/.gitignore に足す）
+# flow.log と作業ファイルは git で追跡しない（flow.log を新しく作るとき doc/process/.gitignore に足す）
 dir="$(new_project)"; git -C "$dir" init -q
 write_state "$dir" implementation
 run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
-assert_eq "git 管理下で flow.log を作ると .gitignore に足す" "$(cat "$dir/doc/process/.gitignore" 2>/dev/null)" "flow.log"
+assert_eq "git 管理下で flow.log を作ると .gitignore に作業ファイルを足す" \
+  "$(tr '\n' ' ' < "$dir/doc/process/.gitignore" 2>/dev/null)" "flow.log .context_status reviews/ results/ injection/ "
+rm -f "$dir/doc/process/flow.log"
 run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
-assert_eq "  2 回目は足さない" "$(grep -c . "$dir/doc/process/.gitignore")" "1"
+assert_eq "  2 回目は足さない" "$(grep -c . "$dir/doc/process/.gitignore")" "5"
+mkdir -p "$dir/doc/process/reviews" && touch "$dir/doc/process/reviews/x.json"
+assert_eq "  reviews/ は無視され、state.json は無視されない" \
+  "$(git -C "$dir" check-ignore -q doc/process/reviews/x.json && echo ign)$(git -C "$dir" check-ignore -q doc/process/state.json || echo track)" "igntrack"
+rm -rf "$dir"
+
+# 既に一部が書かれた .gitignore には足りない行だけ足す
+dir="$(new_project)"; git -C "$dir" init -q
+write_state "$dir" implementation
+printf 'flow.log\nreviews/\n' > "$dir/doc/process/.gitignore"
+run_hook state-write-guard.sh "$dir" "$(bash_json 'echo "{}" > doc/process/state.json')" >/dev/null
+assert_eq "既存の .gitignore には足りない行だけ足す" \
+  "$(tr '\n' ' ' < "$dir/doc/process/.gitignore")" "flow.log reviews/ .context_status results/ injection/ "
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------

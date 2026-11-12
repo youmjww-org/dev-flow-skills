@@ -183,15 +183,32 @@ sync_checklist() {
 # flow.log
 # ---------------------------------------------------------------------------
 
+# doc/process のうち git で追跡しないもの。どれもその run の中でメインの作業ディレクトリの
+# ファイルとして読み書きするだけで、worktree へ git 経由で渡す必要も、後から読み返す必要もない。
+# - flow.log / .context_status: hook が最後のコミットの後にも書く
+# - reviews/: codex へのプロンプトとレビュー結果の JSON（残す価値のある指摘は review-findings-backlog.md に集約される）
+# - results/: implementer の完了 JSON（{MAIN_DIR} の絶対パスで受け渡す）
+# - injection/: group-context.py が毎回作り直す仕様の切り出し
+# state.json・task_checklist.md は hook がコミットし worktree へ渡すので、ここに入れない。
+PROCESS_GITIGNORE_ENTRIES="flow.log .context_status reviews/ results/ injection/"
+
+# doc/process/.gitignore に PROCESS_GITIGNORE_ENTRIES の足りない行を足す。
+# 既に追跡されているファイルは追跡されたまま（外すのは人間が git rm --cached で行う）。
+ensure_process_gitignore() {
+  [ -d "$PROCESS_DIR" ] || return 0
+  git -C "$PROCESS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local entry
+  for entry in $PROCESS_GITIGNORE_ENTRIES; do
+    grep -qxF "$entry" "$PROCESS_DIR/.gitignore" 2>/dev/null \
+      || printf '%s\n' "$entry" >> "$PROCESS_DIR/.gitignore"
+  done
+}
+
 # 時系列ログに 1 行追記。形式: `2026-09-03T19:43:00+0900 event=... key=value ...`
-# flow.log は hook が最後のコミットの後にも書くので git では追跡しない。新しく作るときに
-# doc/process/.gitignore へ足す（既に追跡されている flow.log はそのまま）。
+# flow.log を新しく作るときに doc/process/.gitignore を揃える。
 log_flow() {
   [ -d "$PROCESS_DIR" ] || return 0
-  if [ ! -f "$FLOW_LOG" ] && git -C "$PROCESS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-     && ! grep -qx 'flow.log' "$PROCESS_DIR/.gitignore" 2>/dev/null; then
-    printf 'flow.log\n' >> "$PROCESS_DIR/.gitignore"
-  fi
+  [ -f "$FLOW_LOG" ] || ensure_process_gitignore
   printf '%s %s\n' "$(TZ=Asia/Tokyo date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >> "$FLOW_LOG"
 }
 

@@ -117,6 +117,8 @@ hook が入っていない（`setup.sh --no-hooks`）環境では自動マージ
 | `doc/process/plan_repair_log.md` | Plan Repair の履歴 |
 | `doc/process/escalation_*.md` | 人間への報告（発生時のみ） |
 
+`doc/process/` のうち `flow.log`・`.context_status`・`reviews/`・`results/`・`injection/` は run の中だけで使う作業ファイルなので、hook が `doc/process/.gitignore` に足して git では追跡しない（`state.json` と `task_checklist.md` は hook がコミットして worktree に渡すので追跡する）。導入前から追跡されているものは `git rm -r --cached` で外す。
+
 ## トラブルシューティング {#troubleshooting}
 
 | 症状 | 対処 |

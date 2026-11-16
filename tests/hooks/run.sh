@@ -480,7 +480,8 @@ touch -d '2026-10-01' "$dir/doc/process/reviews/group-3-dev-app-r3.json"   # 前
 echo '{"status": "approved", "findings": []}' > "$dir/doc/process/reviews/group-31-dev-app-r1.json"   # 別のグループ
 cat > "$dir/doc/process/results/group-3-dev-app.json" <<'JSON'
 {"status": "done", "confidence": 0.85, "result": {"self_review": {"fixed": 2}, "unit_tests": {"passed": 10, "failed": 0},
- "mutation": [{"killed": true}, {"killed": true}], "review_responses": [{"action": "fixed"}, {"action": "not_fixed"}]}}
+ "mutation": [{"killed": true}, {"killed": true}], "review_responses": [{"action": "fixed"}, {"action": "not_fixed"}],
+ "integration": {"slow_tests": [{"test": "t1", "seconds": 11.0}, {"test": "t2", "seconds": 3.2}]}}}
 JSON
 echo '{"status": "done", "result": {"self_review": "古い形式"}}' > "$dir/doc/process/results/group-3-p2-qa-app.json"
 out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 21 2>&1)"; rc=$?
@@ -492,6 +493,7 @@ assert_eq "  生き残った変異の仕分けの内訳" "$(jq -c 'select(.role=
 assert_eq "  レビュー行（エンジン・モデル・件数・実行で確認）" "$(jq -c 'select(.source=="reviews/group-3-dev-app-r1.json") | [.round, .engine, .model, .counts.blocker, .counts.minor, .serious[0].rule, .serious[0].verified, .needs_human]' "$L")" '[1,"codex","gpt-6.1-sol",1,1,"review/allowlist-bypass",true,1]'
 assert_eq "  fix の本文は残さない" "$(grep -c '秘密の修正案' "$L")" "0"
 assert_eq "  完了 JSON 行（自己申告）" "$(jq -c 'select(.source=="results/group-3-dev-app.json") | [.self_review_fixed, .self_mutation, .review_responses.not_fixed]' "$L")" '[2,{"n":2,"killed":2},1]'
+assert_eq "  遅いテストの件数" "$(jq -c 'select(.source=="results/group-3-dev-app.json") | .slow_tests' "$L")" "2"
 assert_eq "  QA の part を読み取り、古い形式でも落ちない" "$(jq -c 'select(.source=="results/group-3-p2-qa-app.json") | [.part, .role, .self_review_fixed]' "$L")" '[2,"qa",null]'
 assert_contains "  台帳もコミットに入る" "$(cd "$dir" && git show --name-only --format= HEAD)" "doc/process/metrics/review-ledger.jsonl"
 out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 21 --no-commit 2>&1)"

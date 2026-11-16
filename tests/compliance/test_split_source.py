@@ -62,6 +62,21 @@ def main():
         check("束を減らしても全ファイルを含む", sum(len(c["files"]) for c in d["chunks"]), 5)
         check("引き上げた上限を記録", d["max_lines_per_chunk"] > 1000, True)
 
+        # test-footprint.py: 実装 2700 行・テスト 999×3（tests/・_test.go・.spec.ts）の比と、勧めるかどうか
+        fp = ROOT / "dev-flow-compliance/scripts/test-footprint.py"
+        (repo / "base.xml").write_text('<testsuite><testcase name="a" time="400"/><testcase name="b" time="300.5"/></testsuite>')
+        p = subprocess.run([sys.executable, str(fp), "--root", str(repo), "--junit", str(repo / "base.xml")],
+                           capture_output=True, text=True)
+        f = json.loads(p.stdout)
+        check("footprint 行数", (f["source_lines"], f["test_lines"], f["test_files"]), (2700, 2997, 3))
+        check("footprint 比", f["ratio"], 1.11)
+        check("footprint 実行時間", (f["tests"], f["seconds_serial"]), (2, 700.5))
+        check("実行時間が目安を超えたら勧める", (f["recommend"], len(f["reasons"])), (True, 1))
+        p = subprocess.run([sys.executable, str(fp), "--root", str(repo), "--ratio", "1.0"], capture_output=True, text=True)
+        check("比が目安を超えたら勧める", json.loads(p.stdout)["recommend"], True)
+        p = subprocess.run([sys.executable, str(fp), "--root", str(repo)], capture_output=True, text=True)
+        check("どちらも目安以内なら勧めない", json.loads(p.stdout)["recommend"], False)
+
     with tempfile.TemporaryDirectory() as tmp:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", tmp], capture_output=True, text=True)
         check("git でなければ NG", (p.returncode, p.stdout.startswith("NG split-source")), (1, True))

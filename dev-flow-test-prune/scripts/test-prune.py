@@ -2,8 +2,11 @@
 """テストの最適化: ほかのテストで代わりが利くテストを、カバレッジと変異の殺し方から洗い出す（pytest 用）。
 
 使い方:
-  test-prune.py analyze --worktree DIR --coverage-json COV.json [--junit BASE.xml] --runner CMD
-                        [--mutants N] [--protect REGEX] [--workers K] --out PRUNE.json
+  test-prune.py analyze --worktree DIR --coverage-json .coverage [--junit BASE.xml] --runner CMD
+                        [--mutants N] [--min-evidence E] [--protect REGEX] [--workers K] --out PRUNE.json
+  test-prune.py replan  --worktree DIR --prune PRUNE.json --coverage-json .coverage [--junit BASE.xml]
+                        [--min-evidence E] --out PRUNE2.json      （変異を流さずに基準を変えて選び直す）
+  test-prune.py remove  --worktree DIR --prune PRUNE.json        （候補の関数を構文木の行範囲で消す）
   test-prune.py verify  --worktree DIR --prune PRUNE.json --runner CMD [--workers K] --out VERIFY.json
 
 analyze:
@@ -12,9 +15,10 @@ analyze:
   2. テストに通られた実装の行から、mutate-diff.py と同じ演算子で変異を N 件（既定 150）選ぶ（ファイルの間で偏らない
      よう、ファイルごとに順番に取る。乱数の種は HEAD で決まる）
   3. 変異ごとに、その行を通るテストだけを流し（JUnit XML で）、どのテストが変異を殺したかを記録する
-  4. テスト関数（パラメータの行はまとめる）ごとに、通った行の集合と殺した変異の集合を作り、実行時間の長い順に、
-     「取り除いても、残りのテストで行も変異もすべて覆える」ものを取り除き候補にする。--protect に一致する
-     テスト（既定は TC-ID を名前に持つもの）は、同じ TC-ID のテストが 1 つも残らなくなる取り除き方をしない
+  4. テスト関数（パラメータの行はまとめる）ごとに、通った分岐の集合と殺した変異の集合を作る。TC-ID を名前に
+     持つテスト（--protect）・変異なしで落ちたテスト・通った行の変異が --min-evidence 件未満のテストを先に残し、
+     あとは実行時間の短い順に「残したテストでまだ覆えていない分岐か変異を足す」ものを残す。残らなかったものが
+     取り除き候補（詳しい基準と根拠は plan_removals）
   5. 準備と検証の形が同じで、値だけが違うテスト関数（同じファイル）を、parametrize にまとめる候補として挙げる
 verify:
   analyze が選んだ変異をもう一度流し、取り除いた後のテストで殺せる変異が減っていないかを確かめる
@@ -73,16 +77,20 @@ def _context_test(c):
     return c.rsplit("|", 1)[0] if c else None
 
 
-def load_coverage(path, worktree="."):
+def load_coverage(path, worktree=".", with_arcs=False):
     """{nodeid: {file: 通った行のビット集合}}。setup / teardown の文脈も同じテストに数える。テストのファイルと
-    worktree の外のファイルは除く。path は .coverage（SQLite）か、coverage json --show-contexts の出力"""
+    worktree の外のファイルは除く。path は .coverage（SQLite）か、coverage json --show-contexts の出力。
+    with_arcs なら (行, 分岐) の組を返す。分岐は「ファイルごとに番号を振った (from, to) の組」のビット集合で、
+    分岐で測っていないデータ（line_bits・JSON）では行と同じものになる"""
     worktree = str(worktree)
     masks = defaultdict(dict)
+    arcs = defaultdict(dict)
+    arc_index = defaultdict(dict)
 
-    def add(nodeid, f, mask):
+    def add(nodeid, f, mask, target=masks):
         if not nodeid or TEST_FILE.search(f) or f.startswith(".."):
             return
-        d = masks[nodeid]
+        d = target[nodeid]
         d[f] = d.get(f, 0) | mask
 
     if str(path).endswith(".json"):
@@ -91,7 +99,7 @@ def load_coverage(path, worktree="."):
             for line, ctxs in (info.get("contexts") or {}).items():
                 for c in ctxs:
                     add(_context_test(c), f, 1 << int(line))
-        return masks
+        return (masks, masks) if with_arcs else masks
     import sqlite3
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     files = {i: (os.path.relpath(p, worktree) if os.path.isabs(p) else p) for i, p in con.execute("select id, path from file")}
@@ -103,10 +111,16 @@ def load_coverage(path, worktree="."):
         n += 1
     if n == 0:  # 分岐（arc）で測ったデータ
         for fid, cid, a, b in con.execute("select file_id, context_id, fromno, tono from arc"):
+            f, t = files[fid], ctxs.get(cid)
             m = (1 << a if a > 0 else 0) | (1 << b if b > 0 else 0)
             if m:
-                add(ctxs.get(cid), files[fid], m)
-    return masks
+                add(t, f, m)
+            if with_arcs:
+                idx = arc_index[f].setdefault((a, b), len(arc_index[f]))
+                add(t, f, 1 << idx, arcs)
+        if with_arcs:
+            return masks, arcs
+    return (masks, masks) if with_arcs else masks
 
 
 def covered_lines(masks):
@@ -281,33 +295,46 @@ def choose_mutants(md, wt, covered, n, seed):
 
 # ── 取り除き候補の選び方 ───────────────────────────────────────────────────
 
-def plan_removals(units, protect, keep_always=frozenset()):
-    """units: {unit: {"masks": {file: ビット集合}, "kills": set, "seconds": float}}。残すテストを選び、残りを
-    取り除き候補にする。まず TC-ID ごとに 1 つ（いちばん速いもの）を残し、次に実行時間の短い順に、まだ残した
-    テストで覆えていない行か変異を 1 つでも足すものを残す。速いテストを優先して残すので、遅い重複が候補になる"""
+def plan_removals(units, protect, keep_always=frozenset(), min_evidence=3, tc_mode="keep-all"):
+    """units: {unit: {"arcs": {file: ビット集合}, "kills": set, "evidence": int, "seconds": float}}。
+    残すテストを選び、残りを取り除き候補にする。
+
+    先に残すもの: keep_always（変異なしで落ちたテストなど）、tc_mode が keep-all なら TC-ID を名前に持つテスト
+    すべて（keep-one なら TC-ID ごとにいちばん速い 1 つ）、通った行にある変異が min_evidence 件未満のテスト
+    （殺し方で比べる根拠が足りない）。そのあと実行時間の短い順に、残したテストでまだ覆えていない分岐か、
+    まだ殺せていない変異を 1 つでも足すものを残す。速いテストを優先して残すので、遅い重複が候補になる。
+
+    2026-11 の photo-incident-triage（テスト関数 6,690 個・変異 150 件）では、行だけ・根拠の下限なし・TC ごとに
+    1 つの基準で 81% が候補になったが、そのうち 1,534 個は通った行に変異が 1 件も無く、1,997 個は仕様の値を
+    確かめる TC のテストだった。数字が大きいだけで信用できないので、既定はこの 3 つを締めてある"""
     covered, killed, keep = defaultdict(int), set(), set()
 
     def take(u):
         keep.add(u)
-        for f, m in units[u]["masks"].items():
+        for f, m in units[u]["arcs"].items():
             covered[f] |= m
         killed.update(units[u]["kills"])
 
+    order = lambda u: (units[u]["seconds"], u)  # noqa: E731
     by_tc = defaultdict(list)
     for u in units:
         for t in tc_ids(u, protect):
             by_tc[t].append(u)
-    order = lambda u: (units[u]["seconds"], u)  # noqa: E731
-    for u in sorted(keep_always & set(units)):
+    first = set(keep_always) & set(units)
+    first |= {u for u in units if units[u]["evidence"] < min_evidence}
+    if tc_mode == "keep-all":
+        first |= {u for us in by_tc.values() for u in us}
+    for u in sorted(first):
         take(u)
-    for t in sorted(by_tc):
-        if not keep.intersection(by_tc[t]):
-            take(min(by_tc[t], key=order))
+    if tc_mode == "keep-one":
+        for t in sorted(by_tc):
+            if not keep.intersection(by_tc[t]):
+                take(min(by_tc[t], key=order))
     for u in sorted(units, key=order):
         if u in keep:
             continue
         d = units[u]
-        if d["kills"] - killed or any(m & ~covered[f] for f, m in d["masks"].items()):
+        if d["kills"] - killed or any(m & ~covered[f] for f, m in d["arcs"].items()):
             take(u)
     return sorted((u for u in units if u not in keep), key=lambda u: (-units[u]["seconds"], u))
 
@@ -355,7 +382,7 @@ def cmd_analyze(a):
     if git(wt, "status", "--porcelain", "--untracked-files=no").strip():
         sys.exit("追跡しているファイルに未コミットの変更があります。きれいな状態で始めてください")
     head = git(wt, "rev-parse", "HEAD").strip()
-    by_test = load_coverage(a.coverage_json, wt)
+    by_test, by_arc = load_coverage(a.coverage_json, wt, with_arcs=True)
     if not by_test:
         sys.exit("カバレッジにテストの文脈がありません（pytest-cov の --cov-context=test で集めてください）")
     base = junit_cases(a.junit)
@@ -363,14 +390,7 @@ def cmd_analyze(a):
     flaky = frozenset(n for n, (_, bad) in base.items() if bad)
     md = load_mutate_diff()
     mutants, total_cands = choose_mutants(md, wt, covered_lines(by_test), a.mutants, head)
-    cover_cache = {}
-
-    def covering(m):
-        key = (m["file"], m["line"])
-        if key not in cover_cache:
-            bit = 1 << m["line"]
-            cover_cache[key] = {t for t, d in by_test.items() if d.get(m["file"], 0) & bit}
-        return cover_cache[key]
+    covering = coverer(by_test)
 
     log = None
     if a.progress:
@@ -378,58 +398,175 @@ def cmd_analyze(a):
             print(f"[{i + 1}/{len(mutants)}] {m['file']}:{m['line']} {m['operator']} テスト {len(covering(m))} 件"
                   f" → {'timeout' if k == 'timeout' else len(k)} 件が殺した", file=sys.stderr, flush=True)
     kills, note = run_mutants(wt, a.runner, mutants, covering, durations, a.workers, log, flaky)
+    for i, m in enumerate(mutants):
+        m["killed_by"] = kills.get(i, [])
+    report = build_report(a, wt, head, by_test, by_arc, durations, flaky, mutants, total_cands, note)
+    write_report(report, a.out)
 
-    units = defaultdict(lambda: {"masks": {}, "kills": set(), "seconds": 0.0, "nodeids": set()})
-    for t, d in by_test.items():
+
+def coverer(by_test):
+    cache = {}
+
+    def covering(m):
+        key = (m["file"], m["line"])
+        if key not in cache:
+            bit = 1 << m["line"]
+            cache[key] = {t for t, d in by_test.items() if d.get(m["file"], 0) & bit}
+        return cache[key]
+    return covering
+
+
+def build_report(a, wt, head, by_test, by_arc, durations, flaky, mutants, total_cands, note):
+    covering = coverer(by_test)
+    units = defaultdict(lambda: {"arcs": {}, "kills": set(), "evidence": 0, "seconds": 0.0, "nodeids": set()})
+    for t, d in by_arc.items():
         u = units[unit_of(t)]
         for f, m in d.items():
-            u["masks"][f] = u["masks"].get(f, 0) | m
+            u["arcs"][f] = u["arcs"].get(f, 0) | m
         u["seconds"] += durations.get(t, 0.0)
         u["nodeids"].add(t)
-    for i, ks in kills.items():
-        if ks == "timeout":
+    tried = [i for i, m in enumerate(mutants) if m["killed_by"] or covering(m)]
+    for i in tried:
+        m = mutants[i]
+        for u in {unit_of(t) for t in covering(m)}:
+            units[u]["evidence"] += 1
+        if m["killed_by"] == "timeout":
             continue
-        for t in ks:
+        for t in m["killed_by"]:
             units[unit_of(t)]["kills"].add(i)
     # 変異なしで落ちたテストは、殺した変異を数えられない（数えないと弱いテストに見える）ので取り除かない
     unstable = frozenset(unit_of(t) for t in flaky)
-    removed = plan_removals(units, a.protect, unstable)
-    tried = [i for i in kills]
-    killed = [i for i in tried if kills[i] == "timeout" or kills[i]]
+    removed = plan_removals(units, a.protect, unstable, a.min_evidence, "keep-all")
+    # 参考: TC のテストも「TC ごとに 1 つ」まで減らすなら、ほかに何個が候補になるか（自動では消さない）
+    tc_dups = sorted(set(plan_removals(units, a.protect, unstable, a.min_evidence, "keep-one")) - set(removed))
+    killed = [i for i in tried if mutants[i]["killed_by"]]
     test_files = {t.split("::", 1)[0] for t in by_test}
     total_seconds = sum(u["seconds"] for u in units.values())
     removed_seconds = sum(units[u]["seconds"] for u in removed)
-    zero_kill = sorted(u for u, d in units.items()
-                       if u not in unstable and not d["kills"]
-                       and any(covering(mutants[i]) & d["nodeids"] for i in tried))
-    report = {
+    zero_kill = sorted(u for u, d in units.items() if u not in unstable and not d["kills"] and d["evidence"])
+    low_evidence = sum(1 for u, d in units.items() if d["evidence"] < a.min_evidence)
+    return {
         "tool": "test-prune", "head": head, "runner": a.runner, "protect": a.protect,
+        "min_evidence": a.min_evidence,
         "tests": len(by_test), "test_functions": len(units), "test_files": len(test_files),
         "seconds_total": round(total_seconds, 1),
         "mutants": {"candidates": total_cands, "tried": len(tried), "killed": len(killed),
                     "survived": len(tried) - len(killed),
-                    "timeout": sum(1 for i in tried if kills[i] == "timeout")},
+                    "timeout": sum(1 for i in tried if mutants[i]["killed_by"] == "timeout")},
         "removable": {"functions": len(removed),
                       "nodeids": sum(len(units[u]["nodeids"]) for u in removed),
                       "seconds": round(removed_seconds, 1),
                       "share_of_functions": round(len(removed) / len(units), 3) if units else 0,
                       "share_of_seconds": round(removed_seconds / total_seconds, 3) if total_seconds else 0},
         "removable_functions": [{"test": u, "seconds": round(units[u]["seconds"], 2),
-                                 "params": len(units[u]["nodeids"])} for u in removed],
+                                 "params": len(units[u]["nodeids"]), "evidence": units[u]["evidence"]}
+                                for u in removed],
+        "kept_low_evidence": low_evidence,
+        "tc_duplicate_candidates": [{"test": u, "seconds": round(units[u]["seconds"], 2)} for u in tc_dups],
         "zero_kill_functions": zero_kill,
         "parametrize_candidates": parametrize_candidates(wt, test_files),
         "baseline_failed": sorted(flaky),
         "kept_because_baseline_failed": len(unstable & set(units)),
-        "mutant_list": [{**{k: v for k, v in m.items() if not k.startswith("_")}, "_text": m["_text"],
-                         "covered_by_count": len(covering(m)), "killed_by": kills.get(i, [])}
-                        for i, m in enumerate(mutants)],
+        "mutant_list": [{**{k: v for k, v in m.items() if not k.startswith("_") and k != "covered_by_count"},
+                         "_text": m["_text"], "covered_by_count": len(covering(m))} for m in mutants],
         "note": note,
     }
-    Path(a.out).write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
+def write_report(report, out):
+    Path(out).write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     r = report["removable"]
-    print(f"OK test-prune analyze: テスト関数 {len(units)} 個のうち取り除き候補 {r['functions']} 個"
+    print(f"OK test-prune: テスト関数 {report['test_functions']} 個のうち取り除き候補 {r['functions']} 個"
           f"（{r['share_of_functions']:.0%}・実行時間の {r['share_of_seconds']:.0%}）、"
-          f"変異 {len(killed)}/{len(tried)} killed、parametrize 候補 {len(report['parametrize_candidates'])} 組 → {a.out}")
+          f"根拠不足で残した {report['kept_low_evidence']} 個、TC 内の重複候補 {len(report['tc_duplicate_candidates'])} 個、"
+          f"変異 {report['mutants']['killed']}/{report['mutants']['tried']} killed、"
+          f"parametrize 候補 {len(report['parametrize_candidates'])} 組 → {out}")
+
+
+def cmd_replan(a):
+    """analyze の変異の結果を使い回し、基準（--min-evidence・--protect）を変えて選び直す（変異は流さない）"""
+    wt = a.worktree.resolve()
+    prev = json.loads(Path(a.prune).read_text(encoding="utf-8"))
+    by_test, by_arc = load_coverage(a.coverage_json, wt, with_arcs=True)
+    base = junit_cases(a.junit)
+    durations = {n: s for n, (s, _) in base.items()}
+    flaky = frozenset(prev.get("baseline_failed") or [])
+    a.runner = prev["runner"]
+    report = build_report(a, wt, prev["head"], by_test, by_arc, durations, flaky, prev["mutant_list"],
+                          prev["mutants"]["candidates"], prev.get("note"))
+    write_report(report, a.out)
+
+
+def remove_functions(wt, nodeids):
+    """nodeid（file::[Class::]func）のテスト関数を、デコレータごと構文木の行範囲で消す。消せたものを返す"""
+    by_file = defaultdict(set)
+    for n in nodeids:
+        parts = n.split("::")
+        by_file[parts[0]].add(tuple(parts[1:]))
+    done = []
+    for rel, targets in sorted(by_file.items()):
+        path = wt / rel
+        try:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        ranges = []
+
+        def all_targeted(cls, prefix):
+            """クラスの中身がテストの候補（とドキュメント文字列・pass）だけなら、クラスごと消す"""
+            names = prefix + (cls.name,)
+            for n in cls.body:
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and names + (n.name,) in targets:
+                    continue
+                if isinstance(n, ast.Pass) or (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)):
+                    continue
+                return False
+            return True
+
+        def walk(body, prefix):
+            for node in body:
+                if isinstance(node, ast.ClassDef) and all_targeted(node, prefix):
+                    start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+                    names = prefix + (node.name,)
+                    ranges.append((start, node.end_lineno, None))
+                    done.extend("::".join((rel,) + names + (n.name,)) for n in node.body
+                                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+                elif isinstance(node, ast.ClassDef):
+                    walk(node.body, prefix + (node.name,))
+                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and prefix + (node.name,) in targets:
+                    start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+                    ranges.append((start, node.end_lineno, "::".join((rel,) + prefix + (node.name,))))
+        walk(tree.body, ())
+        if not ranges:
+            continue
+        lines = source.split("\n")
+        for start, end, nid in sorted(ranges, reverse=True):
+            del lines[start - 1:end]
+            if nid:
+                done.append(nid)
+        text = re.sub(r"\n{4,}", "\n\n\n", "\n".join(lines))
+        try:
+            ast.parse(text)
+        except SyntaxError:
+            # クラスの中身が空になったなど。このファイルは消さずに残す
+            done = [d for d in done if not d.startswith(rel + "::")]
+            continue
+        path.write_text(text, encoding="utf-8")
+    return done
+
+
+def cmd_remove(a):
+    """analyze / replan の取り除き候補を実際に消し、消したものを prune の removed_functions に書く"""
+    wt = a.worktree.resolve()
+    prune = json.loads(Path(a.prune).read_text(encoding="utf-8"))
+    wanted = [x["test"] for x in prune["removable_functions"]]
+    done = remove_functions(wt, wanted)
+    prune["removed_functions"] = [{"test": t} for t in sorted(done)]
+    prune["kept_candidates"] = [{"test": t, "reason": "構文木で消せなかった（消すと構文が壊れる・関数が見つからない）"}
+                                for t in sorted(set(wanted) - set(done))]
+    Path(a.prune).write_text(json.dumps(prune, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    print(f"OK test-prune remove: {len(done)}/{len(wanted)} 個を消した（{len(prune['kept_candidates'])} 個は残した）")
 
 
 def collect(runner, wt):
@@ -486,8 +623,21 @@ def main():
     an.add_argument("--mutants", type=int, default=150)
     an.add_argument("--protect", default=DEFAULT_PROTECT, help="1 つは残すテストの印（既定は TC-ID）")
     an.add_argument("--workers", type=int, default=1, help="pytest-xdist の並列数（変異 1 件のテストが 9 件以上のとき使う）")
+    an.add_argument("--min-evidence", type=int, default=3,
+                    help="取り除き候補にするのは、通った行に変異がこの件数以上あるテストだけ（既定 3）")
     an.add_argument("--progress", action="store_true")
     an.add_argument("--out", required=True)
+    rm = sub.add_parser("remove")
+    rm.add_argument("--worktree", type=Path, required=True)
+    rm.add_argument("--prune", required=True)
+    rp = sub.add_parser("replan")
+    rp.add_argument("--worktree", type=Path, required=True)
+    rp.add_argument("--prune", required=True, help="analyze の出力")
+    rp.add_argument("--coverage-json", required=True)
+    rp.add_argument("--junit")
+    rp.add_argument("--protect", default=DEFAULT_PROTECT)
+    rp.add_argument("--min-evidence", type=int, default=3)
+    rp.add_argument("--out", required=True)
     ve = sub.add_parser("verify")
     ve.add_argument("--worktree", type=Path, required=True)
     ve.add_argument("--prune", required=True)
@@ -495,7 +645,7 @@ def main():
     ve.add_argument("--workers", type=int, default=1)
     ve.add_argument("--out", required=True)
     a = ap.parse_args()
-    return cmd_analyze(a) if a.cmd == "analyze" else cmd_verify(a)
+    return {"analyze": cmd_analyze, "replan": cmd_replan, "remove": cmd_remove, "verify": cmd_verify}[a.cmd](a)
 
 
 if __name__ == "__main__":

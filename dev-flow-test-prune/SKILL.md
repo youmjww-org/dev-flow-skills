@@ -51,21 +51,27 @@ python ${CLAUDE_SKILL_DIR}/scripts/test-prune.py analyze --worktree . \
   --mutants 150 --workers {K} --out doc/process/reviews/prune/prune.json
 ```
 
-- 変異 150 件で、1.8 万件のプロジェクトなら 30〜60 分かかる（変異 1 件ごとに、その行を通るテストだけを流す）。`run_in_background` で流し、終わるのを待つ（`sleep` で見に行かない）
+- 変異 150 件で、1.8 万件のプロジェクトなら 40 分ほどかかる（変異 1 件ごとに、その行を通るテストだけを流す）。`run_in_background` で流し、終わるのを待つ（`sleep` で見に行かない）
 - 標準出力は 1 行の要約だけ。詳しい結果は `prune.json`:
-  - `removable_functions`: 取り除き候補（実行時間の長い順）。TC-ID を名前に持つテストは、TC ごとに 1 つ必ず残してある
+  - `removable_functions`: 取り除き候補（実行時間の長い順）。次の 3 つの基準を満たすものだけ
+    - **分岐で覆える**: 残したテストで、そのテストが通った分岐（`from → to` の組）がすべて通られている
+    - **殺し方で代わりが利く**: そのテストが殺した変異を、残したテストもすべて殺す
+    - **根拠がある**: そのテストが通った行に、試した変異が `--min-evidence`（既定 3）件以上ある。足りないテストは比べる根拠が無いので残す（`kept_low_evidence`）
+  - `tc_duplicate_candidates`: TC-ID を名前に持つテストは**自動では消さない**（仕様の値を確かめていて、分岐と変異では同じに見えても assert が違いうる）。TC ごとに 1 つまで減らすなら候補になるものを、参考として挙げるだけ
   - `zero_kill_functions`: 通った行の変異を 1 つも殺さなかったテスト（確かめていることが弱い）。**自動では消さない**
   - `parametrize_candidates`: 同じファイルで、値だけが違う同じ形のテスト関数の組
+- 基準を変えたいとき（根拠の下限など）は、変異を流し直さずに選び直せる: `test-prune.py replan --worktree . --prune prune.json --coverage-json base.coverage --junit base.xml --min-evidence N --out prune-N.json`
+- 根拠不足で残ったテストが多いとき（関数の半分を超える）は、変異を増やすと判断できるテストが増える（`--mutants` を 2〜3 倍に。時間もほぼ比例して増える）。増やすかどうかは完了報告に書いて人間に任せる
+
+**基準の根拠（2026-11 の photo-incident-triage、テスト関数 6,690 個・変異 150 件）:** 最初の版は「行で覆える・根拠の下限なし・TC ごとに 1 つ残す」だったため、81%（実行時間の 94%）が候補になった。しかしそのうち 1,534 個は通った行に変異が 1 件も無く、1,997 個は TC のテストだった。上の 3 つの基準にすると候補は 927 個（14%・実行時間の 8%）になった。殺された変異 1 件あたり中央値 23 件のテストが同じ変異を殺しており、重複自体は多い。
+
+**実験の結果（同じプロジェクト、候補 927 個のうち最初の版の `remove` で消せた 769 個）:** テスト 18,715 件 → 17,318 件、テストのコード −11,084 行。全テストの失敗は増えず、カバレッジ（行・分岐）は前後でまったく同じ、verify で殺した変異も 130 → 130 で失ったものは無かった。消えたのはほとんど `tests/unit` の Dev のユニットテスト（TC のテストと同じことを繰り返していたもの）。直列の実行時間は測定のぶれの範囲で変わらなかった（遅いテストは保護している TC のテストで、本番の待ちを実時間で待つもの。そちらは規約 `test/slow-real-wait` で直す）。**この道具が減らすのは主に量（保守の手間）で、実行時間ではない。**
 
 ## STEP 3: 取り除く
 
-Agent（`name="test-pruner"`、`model="opus"`）に、`prune.json` のパスと次の指示を渡して編集させる:
-
-- `removable_functions` のテスト関数を消す。消したことでファイルにテストが 1 つも残らなければファイルごと消す。ほかのテストが使っている補助関数・フィクスチャは消さない（`grep -rn` で使われていないことを確かめてから消す）
-- クラスの中のテストは、そのメソッドだけを消す。`parametrize` の行の一部だけが候補になることは無い（関数単位で判定している）
-- `parametrize_candidates` は、assert の中身まで同じ形のときだけ 1 つの `parametrize` にまとめる（TC-ID はテスト名かコメントに残す）。迷うものはまとめない
-- 消したテスト関数の一覧を `doc/process/reviews/prune/prune.json` の `removed_functions`（`[{"test": nodeid}]`）に書き足す（実際に消したものだけ。消さなかった候補は理由を `kept_candidates` に）
-- 取り除きとまとめは別のコミットにする（`test: 代わりの利くテストを取り除く（test-prune）` / `test: 同じ形のテストを parametrize にまとめる`）
+1. `python ${CLAUDE_SKILL_DIR}/scripts/test-prune.py remove --worktree . --prune doc/process/reviews/prune/prune.json` で、`removable_functions` のテスト関数をデコレータごと構文木の行範囲で消す（手で消さない。数百個を手で消すと消し間違える）。消したものは `removed_functions`、消せなかったもの（クラスが空になる等）は `kept_candidates` に記録される
+2. `git diff --stat` で、テストのファイルだけが変わったことを確かめてコミットする（`test: 代わりの利くテストを取り除く（test-prune）`）
+3. `parametrize_candidates` をまとめるなら、Agent（`name="test-pruner"`、`model="opus"`）に組の一覧を渡し、assert の中身まで同じ形のときだけ 1 つの `parametrize` にまとめさせる（TC-ID はテスト名かコメントに残す。迷うものはまとめない）。別のコミットにする（`test: 同じ形のテストを parametrize にまとめる`）
 
 ## STEP 4: 確かめる
 

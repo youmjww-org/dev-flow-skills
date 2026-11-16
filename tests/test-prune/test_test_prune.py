@@ -61,6 +61,13 @@ def test_tc003_fee_large():
     assert fee(11) == 22
 
 
+class TestDup:
+    """クラスの中身が全部候補なら、クラスごと消す"""
+
+    def test_dup_large(self):
+        assert fee(11) == 22
+
+
 def test_fee_shape_a():
     x = 5
     y = fee(x)
@@ -96,11 +103,11 @@ def main():
         repo = make_project(tmp)
         out = tmp / "prune.json"
         p = sh(repo, f"{sys.executable} {SCRIPT} analyze --worktree . --coverage-json {tmp}/cov.json "
-                     f"--junit {tmp}/base.xml --runner '{RUNNER}' --mutants 50 --out {out}")
+                     f"--junit {tmp}/base.xml --runner '{RUNNER}' --mutants 50 --min-evidence 1 --out {out}")
         check("analyze exit", (p.returncode, p.stderr[-300:]), (0, ""))
-        check("analyze summary", p.stdout.startswith("OK test-prune analyze:"), True)
+        check("analyze summary", p.stdout.startswith("OK test-prune:"), True)
         r = json.loads(out.read_text())
-        check("テスト数", (r["tests"], r["test_functions"]), (7, 7))
+        check("テスト数", (r["tests"], r["test_functions"]), (8, 8))
         removed = {x["test"].split("::")[-1] for x in r["removable_functions"]}
         check("TC と同じことを確かめる重複は取り除き候補", "test_adult_boundary_again" in removed, True)
         check("何も確かめないテストも取り除き候補", "test_adult_weak" in removed, True)
@@ -110,22 +117,33 @@ def main():
         check("parametrize 候補", [sorted(g["tests"]) for g in r["parametrize_candidates"]],
               [["test_fee_shape_a", "test_fee_shape_b"]])
         check("変異を殺した", r["mutants"]["killed"] > 0, True)
+        check("TC のテストを TC ごとに 1 つまで減らす参考の候補（自動では消さない）", r["tc_duplicate_candidates"], [])
+
+        # replan: 変異を流さずに基準を変える。根拠の下限を上げると、通った行の変異が少ないテストは残る
+        p = sh(repo, f"{sys.executable} {SCRIPT} replan --worktree . --prune {out} --coverage-json .coverage "
+                     f"--junit {tmp}/base.xml --min-evidence 999 --out {tmp}/replan.json")
+        rr = json.loads((tmp / "replan.json").read_text())
+        check("replan exit", p.returncode, 0)
+        check("根拠が足りなければ取り除かない", (rr["removable"]["functions"], rr["kept_low_evidence"]), (0, 8))
+        check("replan は変異を流し直さない（同じ変異の結果）", rr["mutants"], r["mutants"])
         # .coverage（SQLite）を直接読んでも同じ結果になる（大きなプロジェクトは JSON に書き出せない）
         p = sh(repo, f"{sys.executable} {SCRIPT} analyze --worktree . --coverage-json .coverage "
-                     f"--junit {tmp}/base.xml --runner '{RUNNER}' --mutants 50 --out {tmp}/prune-db.json")
+                     f"--junit {tmp}/base.xml --runner '{RUNNER}' --mutants 50 --min-evidence 1 --out {tmp}/prune-db.json")
         rdb = json.loads((tmp / "prune-db.json").read_text())
         check("SQLite でも同じ取り除き候補", [x["test"] for x in rdb["removable_functions"]],
               [x["test"] for x in r["removable_functions"]])
         check("ファイルを元に戻す", (repo / "app/calc.py").read_text(), APP)
         check("作業ツリーがきれい", sh(repo, "git status --porcelain --untracked-files=no").stdout, "")
 
-        # 候補を取り除いてコミットし、verify で殺せる変異が減っていないことを確かめる
+        # remove で候補を消してコミットし、verify で殺せる変異が減っていないことを確かめる
+        p = sh(repo, f"{sys.executable} {SCRIPT} remove --worktree . --prune {out}")
+        check("remove exit", p.returncode, 0)
         src = (repo / "tests/test_calc.py").read_text()
-        for name in ("test_adult_boundary_again", "test_adult_weak"):
-            start = src.index(f"def {name}")
-            end = src.index("\n\n\ndef ", start)
-            src = src[:start] + src[end + 3:]
-        (repo / "tests/test_calc.py").write_text(src)
+        check("候補だけを消す", ("def test_adult_boundary_again" in src, "def test_adult_weak" in src,
+                                  "def test_tc001_adult_boundary" in src), (False, False, True))
+        check("中身が全部候補のクラスはクラスごと消す", ("class TestDup" in src,
+              any(x["test"].endswith("TestDup::test_dup_large") for x in r["removable_functions"])), (False, True))
+        check("消したものを記録", len(json.loads(out.read_text())["removed_functions"]), len(r["removable_functions"]))
         sh(repo, "git commit -qam prune")
         p = sh(repo, f"{sys.executable} {SCRIPT} verify --worktree . --prune {out} --runner '{RUNNER}' --out {tmp}/v.json")
         v = json.loads((tmp / "v.json").read_text())

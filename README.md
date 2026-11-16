@@ -146,6 +146,7 @@ dev-flow は REQ / TC / API の ID が振られたドキュメントを差分の
 /dev-flow-implementation  # 実装のみ
 /dev-flow-test            # テストのみ
 /dev-flow-compliance      # 準拠チェックのみ
+/dev-flow-test-prune      # テストの最適化（代わりの利くテストを洗い出して取り除く。pytest のみ）
 ```
 
 ### 開発モード
@@ -489,6 +490,7 @@ dev-flow-skills/
 │       ├── reviewer-qa.md          # QA レビュアー（素朴な質問・TC 網羅）
 │       └── reviewer-mutants.md     # 統合検証で生き残った変異の仕分け
 ├── dev-flow-test/                  # 5. test
+├── dev-flow-test-prune/            # テストの最適化（compliance が勧めたときに人間が起動）
 │   └── SKILL.md                    # テスト実行・モデル昇格
 ├── dev-flow-compliance/            # 6. compliance
 │   └── SKILL.md                    # カバレッジ行列検証・準拠チェック

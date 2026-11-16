@@ -36,5 +36,10 @@ jobs:
 
       - name: 独立ミューテーション（mutate-diff.py）のテスト
         run: python3 tests/mutation/test_mutate_diff.py
-      - name: 全体レビューの束分け（split-source.py）のテスト
+      - name: 全体レビューの束分け（split-source.py）・テストの量（test-footprint.py）のテスト
         run: python3 tests/compliance/test_split_source.py
+      - name: テストの最適化（test-prune.py）のテスト
+        run: |
+          python3 -m venv /tmp/prune-venv
+          /tmp/prune-venv/bin/pip install --quiet pytest pytest-cov
+          /tmp/prune-venv/bin/python tests/test-prune/test_test_prune.py

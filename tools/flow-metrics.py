@@ -3,11 +3,17 @@
 
 使い方:
     python3 tools/flow-metrics.py <プロジェクトのディレクトリ> [--json] [--claude-dir ~/.claude]
+    python3 tools/flow-metrics.py --ledger <プロジェクトのディレクトリ | review-ledger.jsonl>... [--json]
 
 読むもの（どれも読み取りだけ）:
 - <project>/doc/process/state.json の harness.stage_history … ステージの時間と人間待ち
 - ~/.claude/projects/<エンコードしたパス>/**/subagents/*.jsonl と *.meta.json … サブエージェントの時間とトークン
 - <project>/doc/process/reviews/*.json … レビューの往復回数とエンジン、spec の公式ドキュメント照合で見つかった食い違いの件数
+- transcript の assistant メッセージの model … 実際に使われたモデル ID（"opus" のような別名ではなく claude-opus-5-5 など）
+
+--ledger は、implementation STEP H が残す doc/process/metrics/review-ledger.jsonl（git で追跡する）を
+run をまたいで集計する。レビューのエンジン別の差し戻し率、重大な指摘の系統、往復回数、
+implementer の自己申告（ミューテーション）とレビュアーの指摘の食い違いを出す。
 
 state.json は run ごとに stage_history を作り直すので、集計できるのは最後の run だけ。
 スキルを変えた前後で比べるときは、run が終わるたびにこのスクリプトの --json を保存しておく。
@@ -72,6 +78,7 @@ def group_of(name, description):
 def read_agent(jsonl, meta_path):
     first = last = None
     out_tokens = 0
+    model_ids = set()
     with open(jsonl, encoding="utf-8") as f:
         for line in f:
             try:
@@ -83,8 +90,11 @@ def read_agent(jsonl, meta_path):
                 first = first or ts
                 last = ts
             if e.get("type") == "assistant":
-                usage = (e.get("message") or {}).get("usage") or {}
+                msg = e.get("message") or {}
+                usage = msg.get("usage") or {}
                 out_tokens += usage.get("output_tokens", 0)
+                if is_model_id(msg.get("model")):
+                    model_ids.add(msg["model"])
     meta = {}
     if meta_path.exists():
         try:
@@ -96,11 +106,38 @@ def read_agent(jsonl, meta_path):
         "description": meta.get("description"),
         "agent_type": meta.get("agentType"),
         "model": meta.get("model"),
+        "model_ids": model_ids,
         "start": first,
         "end": last,
         "seconds": (last - first).total_seconds() if first and last else 0,
         "output_tokens": out_tokens,
     }
+
+
+def is_model_id(m):
+    # API エラーなどで入る "<synthetic>" は除く
+    return isinstance(m, str) and m and not m.startswith("<")
+
+
+def main_session_models(transcript_dir, start, end):
+    """メインの会話（オーケストレーター）で run の間に使われたモデル ID と、その件数"""
+    counts = defaultdict(int)
+    for jsonl in transcript_dir.glob("*.jsonl"):
+        with open(jsonl, encoding="utf-8") as f:
+            for line in f:
+                if '"assistant"' not in line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if e.get("type") != "assistant":
+                    continue
+                ts = parse_ts(e.get("timestamp"))
+                model = (e.get("message") or {}).get("model")
+                if ts and start <= ts <= end and is_model_id(model):
+                    counts[model] += 1
+    return dict(sorted(counts.items()))
 
 
 def collect_agents(transcript_dir, start, end):
@@ -153,8 +190,9 @@ def review_rounds(reviews_dir, start, end):
             data = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             data = {}
-        # engine にフォールバックの理由が続くことがあるので先頭の語だけ使う
-        engine = str(data.get("engine") or "claude").split()[0]
+        # engine にフォールバックの理由が続くことがあるので先頭の語だけ使う。
+        # 記録の無い古いファイルは Claude と決めつけず unknown にする
+        engine = str(data.get("engine") or "unknown").split()[0]
         r["engines"].add(engine)
         if n >= r["rounds"]:
             r["rounds"] = n
@@ -205,6 +243,7 @@ def build_report(project, claude_dir):
 
     transcript_dir = claude_dir / "projects" / encode_project_path(project.resolve())
     agents = collect_agents(transcript_dir, start, end) if transcript_dir.is_dir() else []
+    main_models = main_session_models(transcript_dir, start, end) if transcript_dir.is_dir() else {}
 
     roles = defaultdict(lambda: {"count": 0, "seconds": 0, "max_seconds": 0, "output_tokens": 0, "models": set()})
     groups = defaultdict(lambda: defaultdict(float))
@@ -214,7 +253,10 @@ def build_report(project, claude_dir):
         r["seconds"] += a["seconds"]
         r["max_seconds"] = max(r["max_seconds"], a["seconds"])
         r["output_tokens"] += a["output_tokens"]
-        if a["model"]:
+        # 実際のモデル ID を優先し、transcript に無ければ起動時に渡した別名を使う
+        if a["model_ids"]:
+            r["models"].update(a["model_ids"])
+        elif a["model"]:
             r["models"].add(a["model"])
         if a["group"] and a["role"] != "stage":
             groups[a["group"]][a["role"]] = max(groups[a["group"]][a["role"]], a["seconds"])
@@ -240,6 +282,7 @@ def build_report(project, claude_dir):
             "max_review_rounds": max((r["rounds"] for r in reviews.values()), default=0),
             "fact_check_issues": sum(f["first_issues"] for f in facts.values()),
         },
+        "main_models": main_models,
         "stages": [
             {"stage": k, "runs": v["runs"], "minutes": minutes(v["seconds"])} for k, v in stages.items()
         ],
@@ -286,6 +329,8 @@ def render_markdown(r):
               s["human_stops"], s["subagents"], s["max_review_rounds"]]],
         ),
         "",
+        "メインの会話のモデル: " + (", ".join(f"{k}（{v}）" for k, v in r["main_models"].items()) or "不明"),
+        "",
         "## ステージ",
         "",
         table(["stage", "実行回数", "分"], [[x["stage"], x["runs"], x["minutes"]] for x in r["stages"]]),
@@ -313,13 +358,155 @@ def render_markdown(r):
     return "\n".join(out)
 
 
+LEDGER = "doc/process/metrics/review-ledger.jsonl"
+# implementer の自己申告（テスト全件成功・ミューテーション全件 killed）をすり抜けた「テストの弱さ」の指摘
+WEAK_TEST_RULES = ("test/tc-coverage", "test/expected-from-impl", "test/mutation-checked")
+
+
+def load_ledger(paths):
+    rows = []
+    for p in paths:
+        f = p / LEDGER if p.is_dir() else p
+        if not f.exists():
+            sys.exit(f"台帳がありません: {f}")
+        project = str(p if p.is_dir() else p.parents[3] if len(p.parents) > 3 else p.parent)
+        for line in f.read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            e["project"] = project
+            rows.append(e)
+    return rows
+
+
+def pct(n, d):
+    return round(100 * n / d) if d else None
+
+
+def build_ledger_report(rows):
+    reviews = [r for r in rows if r.get("type") == "review"]
+    results = [r for r in rows if r.get("type") == "result"]
+
+    engines = defaultdict(lambda: {"reviews": 0, "r1": 0, "r1_changes": 0, "serious": 0, "serious_outside": 0, "verified": 0})
+    prefixes = defaultdict(lambda: defaultdict(int))
+    rules = defaultdict(int)
+    max_round = {}
+    weak_tests = 0
+    for r in reviews:
+        e = engines[r.get("engine") or "unknown"]
+        e["reviews"] += 1
+        serious = r.get("serious") or []
+        e["serious"] += len(serious)
+        e["serious_outside"] += sum(1 for x in serious if str(x.get("rule", "")).startswith("review/"))
+        e["verified"] += sum(1 for x in serious if x.get("verified"))
+        if r.get("round") == 1:
+            e["r1"] += 1
+            e["r1_changes"] += r.get("status") == "changes_requested"
+        for x in serious:
+            rule = str(x.get("rule") or "none")
+            prefixes[rule.split("/")[0]][x.get("severity")] += 1
+            rules[rule] += 1
+            weak_tests += rule in WEAK_TEST_RULES
+        key = (r["project"], r.get("run"), r.get("group"), r.get("part"), r.get("role"), r.get("team"))
+        max_round[key] = max(max_round.get(key, 0), r.get("round") or 0)
+
+    rounds = defaultdict(int)
+    for n in max_round.values():
+        rounds[n] += 1
+
+    self_n = sum((r.get("self_mutation") or {}).get("n", 0) for r in results)
+    self_killed = sum((r.get("self_mutation") or {}).get("killed", 0) for r in results)
+    indep = [r["independent_mutation"] for r in results if r.get("independent_mutation")]
+    fixed = [r["self_review_fixed"] for r in results if isinstance(r.get("self_review_fixed"), int)]
+
+    return {
+        "projects": sorted({r["project"] for r in rows}),
+        "runs": len({(r["project"], r.get("run")) for r in rows}),
+        "reviews": len(reviews),
+        "results": len(results),
+        "engines": [
+            {"engine": k, **v, "r1_changes_pct": pct(v["r1_changes"], v["r1"]),
+             "serious_per_review": round(v["serious"] / v["reviews"], 2) if v["reviews"] else None}
+            for k, v in sorted(engines.items())
+        ],
+        "rounds": [{"max_round": k, "count": v} for k, v in sorted(rounds.items())],
+        "serious_by_prefix": [
+            {"prefix": k, **dict(sorted(v.items())), "total": sum(v.values())}
+            for k, v in sorted(prefixes.items(), key=lambda kv: -sum(kv[1].values()))
+        ],
+        "top_rules": [{"rule": k, "count": v} for k, v in sorted(rules.items(), key=lambda kv: (-kv[1], kv[0]))[:15]],
+        "self_reported": {
+            "mutation_total": self_n,
+            "mutation_killed": self_killed,
+            "self_review_fixed_avg": round(sum(fixed) / len(fixed), 1) if fixed else None,
+            "weak_test_findings": weak_tests,
+        },
+        "independent_mutation": {
+            "groups": len(indep),
+            "total": sum(x.get("total") or 0 for x in indep),
+            "survived": sum(x.get("survived") or 0 for x in indep),
+        },
+    }
+
+
+def render_ledger_markdown(r):
+    sr, im = r["self_reported"], r["independent_mutation"]
+    out = [
+        f"# dev-flow 台帳の集計（{r['runs']} run・レビュー {r['reviews']} 件・完了 JSON {r['results']} 件）",
+        "",
+        "## レビューのエンジン",
+        "",
+        table(["engine", "レビュー", "1 回目", "1 回目の差し戻し率", "重大/件", "うち規約外", "うち実行で確認"],
+              [[x["engine"], x["reviews"], x["r1"], f"{x['r1_changes_pct']}%" if x["r1_changes_pct"] is not None else "-",
+                x["serious_per_review"], x["serious_outside"], x["verified"]] for x in r["engines"]]),
+        "",
+        "エンジンごとの差は、担当したグループ・時期が違えばそのまま比べられない。",
+        "",
+        "## 往復回数（グループ・役割ごとの最終回）",
+        "",
+        table(["最終回", "数"], [[x["max_round"], x["count"]] for x in r["rounds"]]),
+        "",
+        "## 重大な指摘（blocker / major）の系統",
+        "",
+        table(["系統", "blocker", "major", "計"],
+              [[x["prefix"], x.get("blocker", 0), x.get("major", 0), x["total"]] for x in r["serious_by_prefix"]]),
+        "",
+        table(["rule", "件数"], [[x["rule"], x["count"]] for x in r["top_rules"]]),
+        "",
+        "## 自己申告とレビュアーの指摘",
+        "",
+        f"- implementer が自分で試したミューテーション: {sr['mutation_killed']} / {sr['mutation_total']} 件が killed",
+        f"- それでもレビュアーが見つけたテストの弱さ（{' ・ '.join(WEAK_TEST_RULES)}）: {sr['weak_test_findings']} 件",
+        f"- セルフレビューで直した件数の平均: {sr['self_review_fixed_avg']}",
+    ]
+    if im["groups"]:
+        out.append(f"- オーケストレーター側のミューテーション: {im['groups']} 件で計 {im['total']} 変異、生き残り {im['survived']}")
+    return "\n".join(out)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("project", type=Path)
+    ap.add_argument("paths", nargs="+", type=Path, metavar="project",
+                    help="プロジェクトのディレクトリ（--ledger では複数可。台帳のファイルを直接渡してもよい）")
+    ap.add_argument("--ledger", action="store_true", help="review-ledger.jsonl を run をまたいで集計する")
+    ap.add_argument("--run", help="--ledger で、この開始時刻（state.json の harness.started_at）の run だけを集計する")
     ap.add_argument("--json", action="store_true", help="JSON で出す（run ごとに保存して比べる用）")
     ap.add_argument("--claude-dir", type=Path, default=Path.home() / ".claude")
     args = ap.parse_args()
-    report = build_report(args.project, args.claude_dir)
+    if args.ledger:
+        rows = load_ledger(args.paths)
+        if args.run:
+            want = parse_ts(args.run)
+            rows = [r for r in rows if parse_ts(r.get("run")) == want]
+            if not rows:
+                sys.exit(f"台帳にこの run の行がありません: {args.run}")
+        report = build_ledger_report(rows)
+        print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_ledger_markdown(report))
+        return
+    if len(args.paths) != 1:
+        ap.error("--ledger なしではプロジェクトを 1 つだけ指定してください")
+    report = build_report(args.paths[0], args.claude_dir)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

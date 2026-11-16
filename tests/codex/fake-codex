@@ -6,6 +6,7 @@
 #   FAKE_CODEX_REPLY   -o に書く最終回答
 #   FAKE_CODEX_EXIT    exec の終了コード（既定 0）
 #   FAKE_CODEX_SLEEP   exec の所要秒数（既定 0）
+#   FAKE_CODEX_MODEL   stderr の先頭に「model: …」と出すモデル名（本物の codex exec と同じ。空なら出さない）
 case "${1:-}" in
   --version) echo "codex-cli 0.0.0-test"; exit 0 ;;
   login) exit "${FAKE_CODEX_LOGIN:-0}" ;;
@@ -23,6 +24,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 if [ -n "${FAKE_CODEX_ARGS:-}" ]; then cat > "$FAKE_CODEX_ARGS.stdin"; else cat > /dev/null; fi
+[ -n "${FAKE_CODEX_MODEL:-}" ] && printf 'workdir: %s\nmodel: %s\nprovider: openai\n' "$cwd" "$FAKE_CODEX_MODEL" >&2
 sleep "${FAKE_CODEX_SLEEP:-0}"
 (cd "$cwd" && eval "${FAKE_CODEX_ACTION:-:}")
 [ -n "$last" ] && printf '%s\n' "${FAKE_CODEX_REPLY:-}" > "$last"

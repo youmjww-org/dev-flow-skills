@@ -64,6 +64,8 @@ blocker / major は**見つけたものをすべて**挙げる。minor は最大
 ```json
 {
   "reviewer": "dev-{TEAM}-group-{GROUP_N}",
+  "engine": "claude",
+  "model": "（環境情報に書かれた自分の正確なモデル ID。例 claude-opus-5-5）",
   "status": "approved | changes_requested",
   "findings": [
     {"severity": "blocker", "rule": "go/sql-injection", "file": "internal/repo/user.go", "line": 42, "problem": "WHERE 句を Sprintf で組み立てている", "fix": "プレースホルダ $1 と引数渡しに変える"},

@@ -46,7 +46,7 @@ codex でも Claude でも、レビュアーに渡すプロンプト（`prompts/
    - `4` → 失敗。下の「失敗したとき」
    - quality のオーケストレーターは、他のグループの完了通知も受け取れるよう `wait` を `run_in_background=true` で実行してよい（終わると通知が来る）。`stage-*-agent`（cost）は前景で `wait` を繰り返す（バックグラウンドにすると最終回答が先に返ってしまう）
 
-出力 JSON には `engine: "codex"` と `restored_files`（レビュアーが worktree に残した変更を `wait` が戻したパス）が付く。`status` は、blocker / major の指摘があれば `changes_requested` に揃えてある。
+出力 JSON には `engine: "codex"`・`model`（codex のログの先頭に出る実際のモデル。Codex のモデルは設定で固定していないので記録する）・`restored_files`（レビュアーが worktree に残した変更を `wait` が戻したパス）が付く。`status` は、blocker / major の指摘があれば `changes_requested` に揃えてある。
 
 再レビューも `start` からやり直す（codex のセッションは引き継がない。前回の findings と `review_responses` はプロンプトに入れる。Claude のレビュアーを起動し直すときと同じ）。
 

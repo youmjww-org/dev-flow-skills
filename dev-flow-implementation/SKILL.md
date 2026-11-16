@@ -305,7 +305,8 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
 1. このグループのローカル・リモートのブランチ（QA の part も）を消す
 2. **実バージョンの確認（基盤グループのみ）**: 「実バージョンの書き戻し」タスクを含むグループなら、`state.json.tech_stack.language_version` / `framework_version` が lock ファイルと一致しているか `jq` で確かめる。書き戻されていなければ lock から読んで `state.json` だけ更新する（要件定義書は compliance の乖離として残す）
 3. **レビュー findings の集約**: `doc/process/reviews/group-{N}-*.json` の `findings` のうち、`rule` が `review/*`（規約に無かった指摘）でプロジェクト固有でない汎用的なものを `doc/process/review-findings-backlog.md` に追記する（`| グループ | rule | severity | 内容 | 該当ファイル | 昇格先候補 |`。同じ内容があれば「回数」列を増やす）。compliance が「規約ファイルへの昇格候補」として人間に出す
-4. `${CLAUDE_SKILL_DIR}/../dev-flow/hooks/mark-group-done.sh N <PR番号...>` を 1 回の Bash で実行する（チェックリストの `[x]` 化・`completed_groups` / `active_worktrees` / `pr_numbers` の更新・1 コミット。冪等）。スクリプトが無い環境では同じことを手で行う
+4. `${CLAUDE_SKILL_DIR}/../dev-flow/hooks/mark-group-done.sh N <PR番号...>` を 1 回の Bash で実行する（チェックリストの `[x]` 化・`completed_groups` / `active_worktrees` / `pr_numbers` の更新・台帳への追記・1 コミット。冪等）。スクリプトが無い環境では同じことを手で行う
+   - **台帳**: スクリプトの中で `group-ledger.py` が、このグループのレビュー（エンジン・モデル・判定・重大度ごとの件数・blocker / major の rule と問題の要約）と完了 JSON（セルフレビュー・自己申告のミューテーション・テスト件数など）の要点を `doc/process/metrics/review-ledger.jsonl` に 1 行ずつ足し、同じコミットに入れる。`reviews/` と `results/` は git で追跡しないので、dev-flow の改修でどの仕組みが効いているかを後から確かめる材料はここにしか残らない。台帳に書けなくてもグループの完了処理は止まらない（警告だけ出る）
 5. このグループの Dev / QA implementer と Claude のレビュアーを `TaskStop` で閉じ、待っているグループを起動する。`early_from` でこのグループを待っていた先行開始のグループがあれば、依存先がすべて完了したかを確かめ、完了していればベースブランチの取り込みを頼む（「先行開始」）
 
 ---

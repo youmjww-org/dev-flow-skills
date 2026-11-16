@@ -552,7 +552,15 @@ python3 tools/flow-metrics.py ~/project/dev-flow-sandbox-api          # Markdown
 python3 tools/flow-metrics.py ~/project/dev-flow-sandbox-api --json   # 比較用に保存する
 ```
 
-出すもの: 経過時間・エージェントの作業時間・人間待ち（ステージ実行の合間）と止まった回数、ステージごとの時間、役割（stage / implementer-dev / implementer-qa / reviewer / writer / checker / test-runner）ごとの数・合計・最長・出力トークン、グループごとの役割別の最長時間、レビューごとの往復回数とエンジン。
+出すもの: 経過時間・エージェントの作業時間・人間待ち（ステージ実行の合間）と止まった回数、ステージごとの時間、役割（stage / implementer-dev / implementer-qa / reviewer / writer / checker / test-runner）ごとの数・合計・最長・出力トークン・実際のモデル ID、メインの会話で使われたモデル ID、グループごとの役割別の最長時間、レビューごとの往復回数とエンジン。
+
+`state.json` の `stage_history` は run ごとに作り直され、`reviews/` と `results/` は git で追跡しないので、run をまたいだ比較には台帳を使います。implementation がグループを終えるたびに `doc/process/metrics/review-ledger.jsonl`（git で追跡）へレビューと完了 JSON の要点を 1 行ずつ残します。
+
+```bash
+python3 tools/flow-metrics.py --ledger ~/project/a ~/project/b         # 複数プロジェクトの台帳をまとめて集計
+```
+
+出すもの: レビューのエンジンごとの 1 回目の差し戻し率と重大な指摘の数（うち規約外・実行で確認したもの）、往復回数の分布、重大な指摘の系統と多い rule、implementer の自己申告（ミューテーション・セルフレビュー）とレビュアーが見つけたテストの弱さの件数。
 
 `stage_history` は run ごとに作り直されるので、集計できるのは最後の run だけです。比べたい run は終わるたびに `--json` を保存してください。codex のレビューはサブエージェントではないので、時間には入らず往復回数だけ数えます。
 

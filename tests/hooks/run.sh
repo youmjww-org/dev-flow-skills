@@ -456,6 +456,46 @@ assert_eq "存在しないグループは失敗" "$rc" "1"
 assert_contains "  理由を表示" "$out" "セクションが見つかりません"
 rm -rf "$dir"
 
+# 台帳（group-ledger.py）: 上の run には harness.started_at が無いので台帳は書けないが、完了処理は止めない
+dir="$(new_project)"
+(cd "$dir" && git init -q && git config user.email t@example.com && git config user.name t)
+printf '### グループ 3 (App) — depends_on: []\n\n#### Dev タスク (App)\n- [ ] API 実装\n' > "$dir/doc/process/task_checklist.md"
+write_state "$dir" implementation '.implementation_progress = {completed_groups: [], active_worktrees: [], pr_numbers: {}}'
+(cd "$dir" && git add -A && git commit -qm init)
+out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 --no-commit 2>&1)"; rc=$?
+assert_eq "台帳が書けなくても正常終了" "$rc" "0"
+assert_contains "  警告を出す" "$out" "台帳に追記できませんでした"
+write_state "$dir" implementation '.harness.started_at = "2026-11-01T00:00:00Z" | .kind = "feature" | .implementation_progress = {completed_groups: [], active_worktrees: [], pr_numbers: {}}'
+mkdir -p "$dir/doc/process/reviews" "$dir/doc/process/results"
+cat > "$dir/doc/process/reviews/group-3-dev-app-r1.json" <<'JSON'
+{"reviewer": "dev-app-group-3", "status": "changes_requested", "model": "gpt-6.1-sol", "engine": "codex",
+ "findings": [{"severity": "blocker", "rule": "review/allowlist-bypass", "file": "a.py", "line": 1, "problem": "列の記法で許可リストを迂回できる", "fix": "秘密の修正案", "verified_by_execution": true},
+              {"severity": "minor", "rule": "py/naming", "file": "a.py", "line": 2, "problem": "p", "fix": "f"}],
+ "uncertainty_verdicts": [{"point": "x", "verdict": "needs_human", "reason": "r"}]}
+JSON
+echo '{"reviewer": "dev-app-group-3", "status": "approved", "engine": "claude", "model": "claude-opus-5-5", "findings": []}' > "$dir/doc/process/reviews/group-3-dev-app-r2.json"
+echo '{"status": "approved", "findings": []}' > "$dir/doc/process/reviews/group-3-dev-app-r3.json"
+touch -d '2026-10-01' "$dir/doc/process/reviews/group-3-dev-app-r3.json"   # 前の run の残り
+echo '{"status": "approved", "findings": []}' > "$dir/doc/process/reviews/group-31-dev-app-r1.json"   # 別のグループ
+cat > "$dir/doc/process/results/group-3-dev-app.json" <<'JSON'
+{"status": "done", "confidence": 0.85, "result": {"self_review": {"fixed": 2}, "unit_tests": {"passed": 10, "failed": 0},
+ "mutation": [{"killed": true}, {"killed": true}], "review_responses": [{"action": "fixed"}, {"action": "not_fixed"}]}}
+JSON
+echo '{"status": "done", "result": {"self_review": "古い形式"}}' > "$dir/doc/process/results/group-3-p2-qa-app.json"
+out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 21 2>&1)"; rc=$?
+L="$dir/doc/process/metrics/review-ledger.jsonl"
+assert_eq "台帳ありで正常終了" "$rc" "0"
+assert_contains "  台帳の件数を表示" "$out" "レビュー 2 件・完了 JSON 2 件を追記"
+assert_eq "  前の run のファイルと別グループは入れない" "$(jq -r .source "$L" | sort | tr '\n' ' ')" "results/group-3-dev-app.json results/group-3-p2-qa-app.json reviews/group-3-dev-app-r1.json reviews/group-3-dev-app-r2.json "
+assert_eq "  レビュー行（エンジン・モデル・件数・実行で確認）" "$(jq -c 'select(.source=="reviews/group-3-dev-app-r1.json") | [.round, .engine, .model, .counts.blocker, .counts.minor, .serious[0].rule, .serious[0].verified, .needs_human]' "$L")" '[1,"codex","gpt-6.1-sol",1,1,"review/allowlist-bypass",true,1]'
+assert_eq "  fix の本文は残さない" "$(grep -c '秘密の修正案' "$L")" "0"
+assert_eq "  完了 JSON 行（自己申告）" "$(jq -c 'select(.source=="results/group-3-dev-app.json") | [.self_review_fixed, .self_mutation, .review_responses.not_fixed]' "$L")" '[2,{"n":2,"killed":2},1]'
+assert_eq "  QA の part を読み取り、古い形式でも落ちない" "$(jq -c 'select(.source=="results/group-3-p2-qa-app.json") | [.part, .role, .self_review_fixed]' "$L")" '[2,"qa",null]'
+assert_contains "  台帳もコミットに入る" "$(cd "$dir" && git show --name-only --format= HEAD)" "doc/process/metrics/review-ledger.jsonl"
+out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 21 --no-commit 2>&1)"
+assert_eq "  冪等（2 回目は追記しない）" "$(wc -l < "$L" | tr -d ' ')" "4"
+rm -rf "$dir"
+
 # ---------------------------------------------------------------------------
 # agent-complete.sh
 # ---------------------------------------------------------------------------

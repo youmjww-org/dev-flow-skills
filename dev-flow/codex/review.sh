@@ -118,7 +118,7 @@ restore_worktree() {
 
 cmd_wait() {
   [ $# -ge 1 ] || usage
-  local job="$1" limit="${2:-540}" waited=0 code kind out restored
+  local job="$1" limit="${2:-540}" waited=0 code kind out restored model
   [ -f "$job/pid" ] || die "ジョブが無い: $job"
   out="$(cat "$job/out")"
   if [ -f "$job/done" ]; then cat "$job/done"; return 0; fi
@@ -147,11 +147,15 @@ cmd_wait() {
   jq -e '.status == "approved" or .status == "changes_requested"' "$job/last.json" >/dev/null 2>&1 \
     || die "最終回答が JSON でない、または status が無い（$job/last.json）"
 
+  # 実際に使われたモデル。codex exec はログの先頭に「model: gpt-…」を出す（設定で固定していないので記録しておく）
+  model="$(grep -m1 -E '^model: ' "$job/log" 2>/dev/null | sed -E 's/^model: *//; s/[[:space:]]+$//')"
+
   # blocker / major があるのに approved なら changes_requested に直す（レビュアープロンプトの判定規則）
-  jq --argjson restored "$restored" '
+  jq --argjson restored "$restored" --arg model "$model" '
     (if (.findings // []) | any(.severity == "blocker" or .severity == "major")
      then .status = "changes_requested" else . end)
-    + {engine: "codex", restored_files: $restored}' "$job/last.json" > "$out.tmp" && mv "$out.tmp" "$out" \
+    + {engine: "codex", restored_files: $restored}
+    + (if $model == "" then {} else {model: $model} end)' "$job/last.json" > "$out.tmp" && mv "$out.tmp" "$out" \
     || die "出力を書けない: $out"
 
   jq -r --arg out "$out" '"done: status=\(.status) 指摘=\((.findings // .issues // []) | length) 件 戻したファイル=\(.restored_files | length) 件 → \($out)"' "$out" \

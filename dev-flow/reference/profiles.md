@@ -52,7 +52,7 @@ quality でも末端の実行者を最初から fork にはしない。fork は�
 - `stage-*-agent` を起動しないので、hook の `pre-agent-check.sh`（プランモード検出・階層深さ・ループ検出）と `agent-complete.sh`（所要時間の記録）は動かない。代わりに：
   - プランモードなら開始前に「プランモードを抜けて（Shift+Tab）から再実行してください」と伝えて終了する
   - 同じステージを 5 回以上やり直していないかを `harness.stage_history` で自分で確認する
-  - ステージ開始・完了時に `harness.stage_history` へ `{stage, model, started_at, completed_at, duration_seconds}` を追記する
+  - ステージ開始・完了時に `harness.stage_history` へ `{stage, model, model_id, started_at, completed_at, duration_seconds}`（`model_id` は環境情報に書かれた自分の正確なモデル ID） を追記する
 - `state-sync.sh`・`doc-validate.sh`・`test-lint.sh`・`test-stage-guard.sh`・`pr-merge-guard.sh` は書き込み・コマンド単位で動くので、quality でもそのまま効く。ただし `state-sync.sh` は Write / Edit にしか反応しないので、**state.json は必ず Read してから Write / Edit で書く**（`jq ... > tmp && mv` などの Bash では書かない。`state-write-guard.sh` が deny する）
 - 下流スキルに「終了する」「最終回答を返す」と書かれている箇所は、オーケストレーターにとっては「そのステージを終えて `dev-flow/SKILL.md` STEP 5 に戻る」と読む。下流スキルに「オーケストレーターに返す」とある JSON・報告は、自分で STEP 5 の判定に使う
 - 下流スキルの AskUserQuestion は、オーケストレーターがそのまま人間に出す

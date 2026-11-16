@@ -249,6 +249,11 @@ git log で implementation のコミット履歴を確認し、fix: / chore: プ
 ```bash
 git log --oneline --grep="^fix\|^chore" -- .
 ```
+`doc/process/metrics/review-ledger.jsonl` があれば、今回の run の分を集計して、エンジンごとの 1 回目の差し戻し率・往復回数・重大な指摘の系統・自己申告とレビュアーの指摘の食い違いの表をそのまま載せる（数字の解釈は書かない。dev-flow 自体の改修の材料にする）：
+```bash
+python3 ${CLAUDE_SKILL_DIR}/../tools/flow-metrics.py --ledger . --run "$(jq -r .harness.started_at doc/process/state.json)"
+```
+台帳が無い・この run の行が無いときは「台帳なし」と書く。
 
 ### 規約ファイルへの昇格候補
 `doc/process/review-findings-backlog.md` があれば、その表を「回数」の多い順に完了報告に載せ、候補ごとに推奨（dev-flow-skills の規約へ / このプロジェクトの `doc/conventions.md` へ / 見送り）と理由を添える。**人間には聞かず、フローも止めない**（人間に確認するのは requirements と spec の 2 か所だけ）。追記もしない。人間が報告を読んで、`doc/conventions.md` への追記や dev-flow-skills への PR を後から決める。

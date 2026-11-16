@@ -7,7 +7,9 @@
 #   2. 同じタスク文が「全一覧」セクションにもあれば、そちらも - [x] に
 #   3. doc/process/state.json の implementation_progress を更新
 #        completed_groups に group-N を追加 / active_worktrees から group-N を除去 / pr_numbers.group-N に PR 番号
-#   4. 上記 2 ファイルを 1 コミット（--no-commit で抑止）
+#   4. group-ledger.py でレビュー結果・完了 JSON の要点を doc/process/metrics/review-ledger.jsonl に追記
+#      （失敗しても止めない。警告だけ出す）
+#   5. 上記のファイルを 1 コミット（--no-commit で抑止）
 #
 # 冪等: 2 回実行しても結果は同じ。プロジェクトルートは CLAUDE_PROJECT_DIR かカレント。
 set -u
@@ -82,10 +84,19 @@ jq --arg g "group-$N" --argjson prs "$PR_JSON" '
 
 log_flow "event=group_done group=group-$N checklist_updated=$CHANGED${PRS:+ prs=$(IFS=,; echo "${PRS[*]}")}"
 
-# ---- 4: コミット ----
+# ---- 4: 台帳 ----
+if LEDGER_MSG="$(python3 "$(dirname "$0")/group-ledger.py" "$N" --root "$PROJECT_DIR" 2>&1)"; then :; else
+  echo "警告: 台帳に追記できませんでした（グループの完了処理は続けます）: $LEDGER_MSG" >&2
+  LEDGER_MSG=""
+fi
+LEDGER_FILE="doc/process/metrics/review-ledger.jsonl"
+
+# ---- 5: コミット ----
 if [ "$COMMIT" = true ]; then
-  (cd "$PROJECT_DIR" && git add doc/process/task_checklist.md doc/process/state.json \
+  (cd "$PROJECT_DIR" && { [ ! -f "$LEDGER_FILE" ] || git add "$LEDGER_FILE"; } \
+    && git add doc/process/task_checklist.md doc/process/state.json \
     && git commit -q -m "chore: グループ $N 完了（チェックリスト・state.json 更新${PRS:+、PR #$(IFS='#'; echo "${PRS[*]}" | sed 's/#/, #/g')}）" ) \
     || { echo "コミットに失敗（変更が無い可能性）" >&2; exit 1; }
 fi
 echo "グループ $N 完了: チェックリスト ${CHANGED} 行更新、state.json 更新${PRS:+、PR ${PRS[*]}}$( [ "$COMMIT" = true ] && echo '、コミット済み' )"
+[ -z "$LEDGER_MSG" ] || echo "$LEDGER_MSG"

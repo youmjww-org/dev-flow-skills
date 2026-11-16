@@ -115,6 +115,7 @@ hook が入っていない（`setup.sh --no-hooks`）環境では自動マージ
 | `doc/process/coverage_matrix.md` | REQ × TC × API のカバレッジ行列 |
 | `doc/process/tech_facts_{api,infra}.md` | API・インフラ仕様書の記述を公式ドキュメントと照合した結果（spec の fact-checker が蓄積） |
 | `doc/process/flow.log` | hook のイベントログ |
+| `doc/process/metrics/review-ledger.jsonl` | グループごとのレビュー結果と implementer の完了 JSON の要点（implementation STEP H で追記。git で追跡する）。`tools/flow-metrics.py --ledger` で run をまたいで集計する |
 | `doc/process/plan_repair_log.md` | Plan Repair の履歴 |
 | `doc/process/escalation_*.md` | 人間への報告（発生時のみ） |
 

@@ -535,6 +535,7 @@ dev-flow-skills/
 │   ├── infra-spec/                 # インフラ仕様書（INFRA-NNN）
 │   ├── mock/                       # UIモック（*.html）
 │   └── internal/
+│       ├── shared_components.md    # 共通部品の台帳（横断的な関心事と正本の部品。SC-NN）
 │       └── spec_cache.md           # スペックキャッシュ（実装エージェント向け）
 └── doc/process/
     ├── state.json                  # フロー状態（セッション再開用）

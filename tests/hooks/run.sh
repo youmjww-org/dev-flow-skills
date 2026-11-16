@@ -1074,6 +1074,33 @@ out="$(cd "$dir" && python3 "$GC" 4 dev app)"
 assert_contains "コードブロック内の # は見出しにしない（拾えなければ WARN）" "$out" "WARN"
 out="$(cd "$dir" && python3 "$GC" 9 dev app)"
 assert_contains "グループが無ければ NG" "$out" "NG group-context"
+assert_not_contains "台帳が無ければ共通部品の一覧を出さない" "$(cat "$dir/doc/process/injection/group-3-dev-app.md")" "共通部品の一覧"
+cat >> "$dir/doc/process/task_checklist.md" <<'EOF_CK2'
+
+### グループ 5 (App) — depends_on: [group-1]
+#### Dev タスク (App)
+- [ ] API-002 の通知を実装（SC-02 で投稿）
+EOF_CK2
+cat > "$dir/doc/internal/shared_components.md" <<'EOF_SC'
+# 共通部品の台帳
+
+### SC-01: シークレットの読み込み
+- 部品: `app/common/secrets.py` の `read_secret()`
+- 方針: 方針 01 の本文
+
+### SC-02: Slack への投稿
+- 部品: `app/common/slack_delivery.py` の `post()`
+- 方針: 方針 02 の本文
+EOF_SC
+out="$(cd "$dir" && python3 "$GC" 5 dev app)"
+f="$dir/doc/process/injection/group-5-dev-app.md"
+assert_contains "タスクの SC-NN を拾う" "$(cat "$f")" "拾った ID: API-002, SC-02"
+assert_contains "タスクに出てくる部品の節を入れる" "$(cat "$f")" "方針 02 の本文"
+assert_not_contains "タスクに出てこない部品の節は入れない" "$(cat "$f")" "方針 01 の本文"
+assert_contains "全部品の見出しの一覧を入れる" "$(sed -n '/^## 共通部品の一覧/,$p' "$f")" "- SC-01: シークレットの読み込み"
+assert_contains "一覧に規約を書く" "$(cat "$f")" "maint/shared-component-bypass"
+out="$(cd "$dir" && python3 "$GC" 3 dev app)"
+assert_contains "SC を書いていないタスクにも一覧は入れる" "$(cat "$dir/doc/process/injection/group-3-dev-app.md")" "- SC-02: Slack への投稿"
 rm -rf "$dir"
 
 section "context-guard.sh"

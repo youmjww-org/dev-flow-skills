@@ -134,6 +134,8 @@ def result_row(data):
         "unit_tests": {k: unit.get(k) for k in ("passed", "failed", "skipped") if k in unit},
         "lint_exit_code": lint.get("exit_code"),
         "integration_cause": integration.get("cause"),
+        # 1 件が 2 秒を超えるテスト（本番の待ちを実時間で待っている。test/slow-real-wait）
+        "slow_tests": len(as_list(integration.get("slow_tests"))),
         "review_responses": {a: sum(1 for x in responses if x.get("action") == a) for a in ("fixed", "not_fixed")},
     }
 

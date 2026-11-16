@@ -24,6 +24,7 @@
 - **補助関数の再利用**（`test/reuse-helpers`）: 差分で追加した `test_` 以外の `def`・フィクスチャごとに `grep -rn` で同じ役目の既存のもの（`conftest.py`・`helpers*.py`・他のテストファイル）を探す。あれば major で、`fix` に import 先（ファイルと関数名）を書く。グループ番号付きの補助モジュール（`helpers_gNN.py`）の新規作成も major。偶然似ているだけのものはまとめさせない
 - **弱い検証**（`test/weak-assertion`）: テスト定義書・API 仕様書で値が決まっている件数・金額・文言・順序を、下限（`>=` / `>`）・包含・「どれかに一致」でしか見ていないものは major（`fix` に仕様の値どおりの完全一致の assert を書く）。並行・競合・順序の TC で、重なったこと・入れ替わったことを観測していない（逐次に動くスタブのまま結果だけを見ている）ものも major
 - **文脈の現実さ**（`test/realistic-context`）: 検出器・伏せ字・サニタイザの TC で、値の前後が空白か行頭・行末の入力しか無ければ major。製品の言語の文中・句読点の直前・`TEL:` のような接頭辞の後で、実際にテストを流して確かめる（通らなければ `verified_by_execution: true` で、実装の不具合として `problem` に書く）
+- **遅いテスト**（`test/slow-real-wait`）: テストを実行時間つきで流し（pytest `--durations=10` など）、1 件が 2 秒を超えるものを major にする。`fix` に差し替える待ち（実装の関数・定数）を書く。実装に口が無ければ Dev に回る旨を `problem` に書く
 - **置き場**（`test/unit-vs-spec-split`）: 実装の内部関数を直接呼ぶユニットテストや `tests/Unit/**` を書いていないか（Dev の担当。同じパスでコンフリクトする）
 - **ミューテーション**（`test/mutation-checked`）: 統合検証はこのレビューと並行して動くので、`{RESULT_FILE}` の `result.mutation` がまだ空なら見なくてよい（オーケストレーターが統合検証の後に `check-result.sh` で確かめる）。入っていれば、 1〜5 件の記録があり、全件 `killed: true` か（QA worktree には実装が無いので再現はしない）。件数が 5 件以下であることは指摘しない
 - **規約チェックリスト**のうち `test/*` と各言語のテスト関連ルール（`*/table-driven` `*/parametrize` `*/test-*` 等）

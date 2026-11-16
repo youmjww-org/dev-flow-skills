@@ -44,7 +44,33 @@ def run(repo, base, *extra, result_file=None):
     return subprocess.run(args, capture_output=True, text=True)
 
 
+def check_masks():
+    """複数行の文字列・コメントの中を変異の対象にしない（実プロジェクトで docstring の数字ばかり変異した不具合）"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("mutate_diff", SCRIPT)
+    md = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(md)
+
+    def ops(path, source, lineno):
+        mask = md.code_mask(path, source)
+        line = source.split("\n")[lineno - 1]
+        return sorted({m["operator"] for m in md.mutants_for_line(path, lineno, line, mask[lineno - 1])})
+
+    py = 'def f(a):\n    """docstring\n    12 個 a < b and True\n    """\n    x = f"{a + 1} < 2"  # 3 >= 4\n    return a >= 18\n'
+    check("py docstring", ops("m.py", py, 3), [])
+    check("py f-string の式の中はコード・文字の部分と行末コメントは外す", ops("m.py", py, 5), ["arith-add", "int"])
+    check("py code", ops("m.py", py, 6), ["cmp-ge", "int"])
+    check("py 構文エラーでも落ちない", ops("m.py", "def f(:\n    return a >= 1\n", 2), ["cmp-ge", "int"])
+    js = "const a = 1;\n/* block\n   n > 2 && true\n*/\nconst t = `line\n  ${x} + 3`;\nif (a >= 2) { this.#p = !ok; } // 5 < 6\n"
+    check("js block comment", ops("m.js", js, 3), [])
+    check("js template literal の 2 行目", ops("m.js", js, 6), [])
+    check("js code と # の private フィールド", ops("m.js", js, 7), ["bang", "cmp-ge", "int"])
+    sh = 'if [ "$n" -gt 3 ]; then  # 4 > 5\n  echo "1 + 2"\nfi\n'
+    check("sh の # コメントと文字列", (ops("m.sh", sh, 1), ops("m.sh", sh, 2)), (["int"], []))
+
+
 def main():
+    check_masks()
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         repo, base = new_repo(tmp)
@@ -52,7 +78,8 @@ def main():
         (repo / "app/calc.py").write_text(
             "def base():\n    return 1\n\n"
             "def is_adult(age):\n    return age >= 18  # 18 歳以上\n\n"
-            "def double(x):\n    label = \"a + b\"\n    return x + x\n"
+            "def double(x):\n    label = \"a + b\"\n    return x + x\n\n"
+            "def doc():\n    \"\"\"説明の 1 行目。\n    2 行目に 12 と a < b と True がある\n    \"\"\"\n    return None\n"
         )
         (repo / "tests").mkdir()
         (repo / "tests/check.py").write_text(

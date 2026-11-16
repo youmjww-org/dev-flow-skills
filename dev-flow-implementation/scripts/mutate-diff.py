@@ -39,6 +39,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import tokenize
+from io import StringIO
 from pathlib import Path
 
 SOURCE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".php", ".go", ".rb", ".java", ".kt",
@@ -48,7 +50,6 @@ TEST_PATH = re.compile(
     r"|(^|/)test_[^/]*$|_test\.[a-z]+$|\.(test|spec)\.[a-z]+$|(^|/)conftest\.py$|Test\.(php|java|kt)$"
 )
 SKIP_LINE = re.compile(r"^\s*($|#|//|/\*|\*|--|<!--|import\s|from\s+\S+\s+import\s|package\s|use\s|require[ (]|#include)")
-STRING = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`')
 
 # (名前, パターン, 置き換え)。パターンは文字列の外だけに当てる。演算子は前後に空白がある形だけを変える
 OPERATORS = [
@@ -93,28 +94,93 @@ def changed_lines(worktree, base, excludes):
     return out
 
 
-def string_spans(text):
-    return [m.span() for m in STRING.finditer(text)]
+HASH_COMMENT_EXT = {".py", ".rb", ".sh", ".bash", ".php"}
 
 
-def inside(spans, pos):
-    return any(a <= pos < b for a, b in spans)
+def python_code_mask(source):
+    """行ごとに「コードの文字か」の真偽の列を返す。複数行の文字列（docstring）・コメントの中は False。
+    構文が壊れていて字句解析できなければ None"""
+    lines = source.split("\n")
+    mask = [[True] * len(l) for l in lines]
+    try:
+        tokens = list(tokenize.generate_tokens(StringIO(source).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    hidden = {tokenize.STRING, tokenize.COMMENT}
+    for name in ("FSTRING_MIDDLE", "TSTRING_MIDDLE"):
+        if hasattr(tokenize, name):
+            hidden.add(getattr(tokenize, name))
+    for t in tokens:
+        if t.type not in hidden:
+            continue
+        (r1, c1), (r2, c2) = t.start, t.end
+        for r in range(r1, r2 + 1):
+            if r - 1 >= len(mask):
+                break
+            a = c1 if r == r1 else 0
+            b = c2 if r == r2 else len(mask[r - 1])
+            for c in range(a, min(b, len(mask[r - 1]))):
+                mask[r - 1][c] = False
+    return mask
 
 
-def mutants_for_line(path, lineno, text):
+def generic_code_mask(source, suffix):
+    """Python 以外: ファイル全体を走査し、文字列（"…" '…'、複数行の `…`）・ブロックコメント（/* … */）・
+    行コメント（// と、言語によって #）の中を False にする。正確な字句解析ではないが、複数行のコメントや
+    テンプレート文字列の中の数字を変異と取り違えないためには足りる"""
+    lines = source.split("\n")
+    mask = [[True] * len(l) for l in lines]
+    hash_comment = suffix in HASH_COMMENT_EXT
+    state, quote = "code", None
+    for r, line in enumerate(lines):
+        if state in ("line", "str") and not (state == "str" and quote == "`"):
+            state, quote = "code", None  # 行コメントと 1 行の文字列は行末で終わる
+        c = 0
+        while c < len(line):
+            ch, two = line[c], line[c:c + 2]
+            if state == "code":
+                if two == "/*":
+                    state = "block"; mask[r][c] = mask[r][c + 1] = False; c += 2; continue
+                if two == "//" or (hash_comment and ch == "#"):
+                    state = "line"
+                elif ch in "\"'`":
+                    state, quote = "str", ch
+                    mask[r][c] = False; c += 1; continue
+            if state == "block":
+                mask[r][c] = False
+                if two == "*/":
+                    mask[r][c + 1] = False; state = "code"; c += 2; continue
+            elif state == "line":
+                mask[r][c] = False
+            elif state == "str":
+                mask[r][c] = False
+                if ch == "\\" and c + 1 < len(line):
+                    mask[r][c + 1] = False; c += 2; continue
+                if ch == quote:
+                    state, quote = "code", None
+            c += 1
+    return mask
+
+
+def code_mask(path, source):
+    if Path(path).suffix == ".py":
+        mask = python_code_mask(source)
+        if mask is not None:
+            return mask
+    return generic_code_mask(source, Path(path).suffix)
+
+
+def mutants_for_line(path, lineno, text, mask=None):
+    """mask は code_mask() のその行（文字ごとに「コードか」）。無ければ全部コードとみなす"""
     if SKIP_LINE.match(text):
         return []
-    # 行末のコメントは触らない（# / // の後ろ。文字列の中の # は除く）
-    spans = string_spans(text)
-    code_end = len(text)
-    for m in re.finditer(r"#|//", text):
-        if not inside(spans, m.start()):
-            code_end = m.start()
-            break
+    mask = mask if mask is not None and len(mask) == len(text) else [True] * len(text)
     out = []
     for name, pat, repl in OPERATORS:
-        for m in pat.finditer(text, 0, code_end):
-            if inside(spans, m.start()):
+        for m in pat.finditer(text):
+            # 前後の空白を除いた演算子・リテラルの部分が、すべてコードの中にあるものだけ
+            body = [i for i in range(m.start(), m.end()) if not text[i].isspace()]
+            if not body or not all(mask[i] for i in body):
                 continue
             mutated = text[:m.start()] + repl(m) + text[m.end():]
             if mutated != text:
@@ -203,10 +269,12 @@ def main():
 
     candidates = []
     for path, lines in sorted(changed_lines(wt, base, args.exclude).items()):
-        text = (wt / path).read_text(encoding="utf-8").split("\n")
+        source = (wt / path).read_text(encoding="utf-8")
+        text = source.split("\n")
+        mask = code_mask(path, source)
         for n in sorted(set(lines)):
             if 1 <= n <= len(text):
-                candidates.extend(mutants_for_line(path, n, text[n - 1]))
+                candidates.extend(mutants_for_line(path, n, text[n - 1], mask[n - 1]))
     report["candidates"] = len(candidates)
     if not candidates:
         report.update(total=0, killed=0, survived=0, timeout=0, score=None, survivors=[],

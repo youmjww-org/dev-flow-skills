@@ -531,8 +531,13 @@ def remove_functions(wt, nodeids):
         ranges = []
 
         def all_targeted(cls, prefix):
-            """クラスの中身がテストの候補（とドキュメント文字列・pass）だけなら、クラスごと消す"""
+            """クラスの中身がテストの候補（とドキュメント文字列・pass）だけなら、クラスごと消す。候補が 1 つも無い
+            クラス（`class ConflictError(Exception): pass` のような補助のクラス）は消さない。最初の版はこれを
+            「中身が全部候補」とみなして消し、photo-incident-triage で 7 件のテストが NameError になった"""
             names = prefix + (cls.name,)
+            if not any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and names + (n.name,) in targets
+                       for n in cls.body):
+                return False
             for n in cls.body:
                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and names + (n.name,) in targets:
                     continue

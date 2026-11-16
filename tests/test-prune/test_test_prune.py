@@ -4,6 +4,7 @@
 必要: pytest・pytest-cov（CI ではこのテストの前に pip で入れる）。
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,8 +21,12 @@ def check(label, got, want):
         failures.append(f"{label}: got {got!r}, want {want!r}")
 
 
-def sh(cwd, cmd):
-    return subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True)
+def sh(cwd, cmd, env=None):
+    return subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True, env=env)
+
+
+# テストごとのカバレッジは ctrace のコアで集める（sysmon のコアは同じ行を 2 回目以降のテストで記録しない）
+CTRACE = {**os.environ, "COVERAGE_CORE": "ctrace"}
 
 
 APP = '''def is_adult(age):
@@ -91,10 +96,22 @@ def make_project(tmp):
     (repo / "tests/test_calc.py").write_text(TESTS)
     (repo / "conftest.py").write_text("")
     sh(repo, "git init -q && git config user.email t@example.com && git config user.name t && git add -A && git commit -qm base")
-    p = sh(repo, f"{RUNNER} --cov=app --cov-context=test --cov-report= -o junit_family=xunit1 --junitxml={tmp}/base.xml tests")
+    p = sh(repo, f"{RUNNER} --cov=app --cov-context=test --cov-report= -o junit_family=xunit1 --junitxml={tmp}/base.xml tests",
+           env=CTRACE)
     check("baseline pytest", p.returncode, 0)
     sh(repo, f"{sys.executable} -m coverage json --show-contexts -o {tmp}/cov.json")
     return repo
+
+
+def check_sysmon_guard(tmp):
+    """sysmon のコアで集めたカバレッジ（文脈が欠ける）では、取り除きを決めずに止まる"""
+    repo = tmp / "repo"
+    sh(repo, f"rm -f .coverage && {RUNNER} --cov=app --cov-context=test --cov-report= tests",
+       env={**os.environ, "COVERAGE_CORE": "sysmon"})
+    p = sh(repo, f"{sys.executable} {SCRIPT} analyze --worktree . --coverage-json .coverage --junit {tmp}/base.xml "
+                 f"--runner '{RUNNER}' --out {tmp}/sysmon.json")
+    if sys.version_info >= (3, 12):
+        check("sysmon のカバレッジでは止まる", (p.returncode != 0, "COVERAGE_CORE=ctrace" in p.stderr), (True, True))
 
 
 def main():
@@ -158,6 +175,8 @@ def main():
         p = sh(repo, f"{sys.executable} {SCRIPT} verify --worktree . --prune {out} --runner '{RUNNER}' --out {tmp}/v2.json")
         v2 = json.loads((tmp / "v2.json").read_text())
         check("取り除き過ぎは NG", (p.returncode, v2["ok"], len(v2["lost"]) > 0), (1, False, True))
+
+        check_sysmon_guard(tmp)
 
         # 未コミットの変更があれば始めない
         (repo / "app/calc.py").write_text("dirty\n")

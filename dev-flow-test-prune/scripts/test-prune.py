@@ -132,6 +132,17 @@ def covered_lines(masks):
     return out
 
 
+def shared_lines(masks):
+    """2 件以上のテストに通られた行があるか"""
+    seen = defaultdict(int)
+    for d in masks.values():
+        for f, m in d.items():
+            if seen[f] & m:
+                return True
+            seen[f] |= m
+    return False
+
+
 def bits(mask):
     n = 0
     while mask:
@@ -388,6 +399,12 @@ def cmd_analyze(a):
     base = junit_cases(a.junit)
     durations = {n: s for n, (s, _) in base.items()}
     flaky = frozenset(n for n, (_, bad) in base.items() if bad)
+    # coverage の sys.monitoring のコア（COVERAGE_CORE=sysmon。新しい Python では既定になりうる）は、一度記録した
+    # 行を次のテストでは記録しないので、テストごとのカバレッジが取れない（8 件中 3 件しか文脈に出なかった）
+    # 見分け方: どの行も 1 件のテストにしか記録されていない（ctrace なら、共通の行は多くのテストに記録される）
+    if len(by_test) >= 2 and not shared_lines(by_test):
+        sys.exit(f"カバレッジのどの行も 1 件のテストにしか記録されていません（文脈のあるテスト {len(by_test)} 件）。"
+                 "COVERAGE_CORE=ctrace を付けて集め直してください（sys.monitoring のコアはテストごとの文脈を取れない）")
     md = load_mutate_diff()
     mutants, total_cands = choose_mutants(md, wt, covered_lines(by_test), a.mutants, head)
     covering = coverer(by_test)

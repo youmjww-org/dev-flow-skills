@@ -30,7 +30,7 @@ dev-flow のテストは増える一方で、減る仕組みが無い。TC は�
 
 ```bash
 mkdir -p doc/process/reviews/prune
-python -m pytest tests -q -n {K} -p no:cacheprovider -o addopts= --tb=no \
+COVERAGE_CORE=ctrace python -m pytest tests -q -n {K} -p no:cacheprovider -o addopts= --tb=no \
   --cov={source} --cov-context=test --cov-report= \
   -o junit_family=xunit1 --junitxml=doc/process/reviews/prune/base.xml \
   --basetemp="$(mktemp -d)/bt" > doc/process/reviews/prune/base.log 2>&1
@@ -38,6 +38,7 @@ tail -1 doc/process/reviews/prune/base.log
 cp .coverage doc/process/reviews/prune/base.coverage
 ```
 
+- **`COVERAGE_CORE=ctrace` を必ず付ける。** coverage の sys.monitoring のコア（新しい Python で既定になりうる）は、一度記録した行を次のテストでは記録しないので、テストごとのカバレッジが取れない（道具は文脈のあるテストが少なすぎれば止まる）
 - `--basetemp` は毎回新しい場所にする（テストが読み取り専用のディレクトリを残すと、pytest の既定の一時ディレクトリの片付けに失敗し、後の実行で数百件がエラーになる。道具も変異ごとに新しい basetemp を使う）
 - 失敗するテストがあってもよい（変異なしで落ちたテストは、殺した変異を数えられないので取り除き候補から外す）。ただし失敗が全体の 5% を超えたら、環境が揃っていない（DB・外部ファイル）ので止まって人間に報告する
 - **`coverage json --show-contexts` は使わない。** 1.8 万件のテストで 17GB のメモリを使い、サーバーが止まりかけた。道具は `.coverage`（SQLite）を直接読む

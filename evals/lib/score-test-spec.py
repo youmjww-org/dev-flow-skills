@@ -84,7 +84,7 @@ def main():
     no_io = [i for i, s in sections.items() if "入力" not in s or "期待出力" not in s]
     check("all_tc_have_gherkin", True, not no_gherkin, f"欠落: {no_gherkin}")
     check("all_tc_have_io_values", True, not no_io, f"欠落: {no_io}")
-    bad_names = [str(t.get("id")) for t in tcs if not re.match(r"^(正常系|異常系|境界値|セキュリティ|パフォーマンス|不具合再現)[:：]", str(t.get("title", "")))]
+    bad_names = [str(t.get("id")) for t in tcs if not re.match(r"^(正常系|異常系|境界値|セキュリティ|パフォーマンス|不変条件|不具合再現)[:：]", str(t.get("title", "")))]
     check("tc_title_prefix", False, not bad_names, f"接頭辞なし: {bad_names}")
 
     # 4. 曖昧表現リント

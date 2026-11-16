@@ -904,6 +904,30 @@ rm -rf "$dir"
 # ---------------------------------------------------------------------------
 # check-result.sh（implementation STEP C の完了 JSON の判定）
 # ---------------------------------------------------------------------------
+section "repeat-bypass.sh（もぐら叩きの検知）"
+RB="$ROOT/dev-flow-implementation/scripts/repeat-bypass.sh"
+dir="$(mktemp -d)"
+echo '{"findings":[{"severity":"blocker","rule":"review/allowlist-bypass","file":"app/db.py","verified_by_execution":true},{"severity":"major","rule":"review/memory","file":"app/q.py","verified_by_execution":false}]}' > "$dir/r1.json"
+echo '{"findings":[{"severity":"major","rule":"review/scope-bypass","file":"app/db.py","verified_by_execution":true}]}' > "$dir/r2.json"
+out="$("$RB" "$dir/r1.json" "$dir/r2.json")"; rc=$?
+assert_eq "同じファイルで確かめた迂回が続けば 0" "$rc" "0"
+assert_eq "  続いている指摘を出す" "$out" "REPEAT rule=review/scope-bypass file=app/db.py"
+echo '{"findings":[{"severity":"major","rule":"review/allowlist-bypass","file":null,"verified_by_execution":true}]}' > "$dir/r3.json"
+out="$("$RB" "$dir/r1.json" "$dir/r3.json")"; rc=$?
+assert_eq "同じ rule でも続いていると判定する" "$rc" "0"
+echo '{"findings":[{"severity":"major","rule":"review/memory2","file":"app/q.py","verified_by_execution":true}]}' > "$dir/r4.json"
+"$RB" "$dir/r1.json" "$dir/r4.json" >/dev/null; rc=$?
+assert_eq "前回の指摘が実行で確かめたものでなければ 1" "$rc" "1"
+echo '{"findings":[{"severity":"minor","rule":"review/allowlist-bypass","file":"app/db.py","verified_by_execution":true}]}' > "$dir/r5.json"
+"$RB" "$dir/r1.json" "$dir/r5.json" >/dev/null; rc=$?
+assert_eq "minor は数えない" "$rc" "1"
+echo '{"findings":[{"severity":"major","rule":"review/scope-bypass","file":"app/db.py"}]}' > "$dir/r6.json"
+"$RB" "$dir/r1.json" "$dir/r6.json" >/dev/null; rc=$?
+assert_eq "verified_by_execution の無い古い形式は数えない" "$rc" "1"
+"$RB" "$dir/r1.json" "$dir/none.json" >/dev/null 2>&1; rc=$?
+assert_eq "読めなければ 2" "$rc" "2"
+rm -rf "$dir"
+
 section "check-result.sh"
 CHECK="$ROOT/dev-flow-implementation/scripts/check-result.sh"
 dir="$(mktemp -d)"

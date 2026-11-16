@@ -36,7 +36,7 @@
   "model": "（環境情報に書かれた自分の正確なモデル ID。例 claude-opus-5-5）",
   "status": "approved | changes_requested",
   "findings": [
-    {"severity": "major", "rule": "test/tc-coverage", "file": "tests/feature/test_tc426.py", "line": 40, "problem": "app/count.py:88 の `>=` → `>` が生き残る。TC-426 は masked_count が置き換えた総数と一致することを要求するが、テストは 10 以上しか見ていない", "fix": "assert masked_count == 12（テスト定義書 TC-426 の例の値）にする"}
+    {"severity": "major", "rule": "test/tc-coverage", "file": "tests/feature/test_tc426.py", "line": 40, "problem": "app/count.py:88 の `>=` → `>` が生き残る。TC-426 は masked_count が置き換えた総数と一致することを要求するが、テストは 10 以上しか見ていない", "fix": "assert masked_count == 12（テスト定義書 TC-426 の例の値）にする", "verified_by_execution": true}
   ],
   "mutant_verdicts": [
     {"file": "app/count.py", "line": 88, "operator": "cmp-ge", "verdict": "spec", "reason": "TC-426 の件数の一致", "verified": true, "needs_human": false}

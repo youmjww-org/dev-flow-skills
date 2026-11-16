@@ -155,6 +155,8 @@ Tests: TC-001, TC-002
 
 **レビュー指摘の修正で再開された場合**は、渡された `findings` の 1 件ごとに `result.review_responses` に `{"rule": "...", "file": "...", "action": "fixed | not_fixed", "detail": "どう直したか / 直さなかった理由"}` を書く。blocker / major を `not_fixed` にするなら理由は必須（再レビューでレビュアーが判断する）。
 
+**レビュアーが実行して確かめた攻撃（`verified_by_execution: true` の blocker / major）を直すときは**、指摘にある攻撃の入力をそのまま使った回帰テストを足す（`test/exploit-regression`。直す前のコミットで落ち、直した後に通ることを確かめ、`review_responses` の `detail` に書く）。直し方は、その入力だけを塞ぐのではなく、同じ種類の入力をまとめて止める形にする。許可リスト・サニタイザのように対象エンジンの意味を自前で真似て判定しているなら、本物のエンジンに判定させる（実行計画・dry-run・エンジンの正規化 API・権限）か、自前の検査と本物のエンジンでの確認を二重にする（`maint/reimplemented-semantics`）。
+
 ブロッカー発生時は `status: "blocked"` の JSON を `{RESULT_FILE}` に書いて 1 行で返す（その場で作業を止める）。選べる案があれば `blockers[].recommendation` に推奨と理由を必ず書く（オーケストレーターはまず推奨案で続けさせ、人間には後でまとめて聞く）:
 
 ```json

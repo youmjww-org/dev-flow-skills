@@ -480,7 +480,8 @@ dev-flow-skills/
 │   │   └── agent-prompt-injection.md  # 規約ファイルの選び方・memory注入・ガードレール・昇格通知
 │   ├── scripts/
 │   │   ├── ensure-worktree.sh      # STEP A worktree 作成と依存物・.env の準備
-│   │   └── mutate-diff.py          # STEP C.5 独立ミューテーション（変更行に道具が変異を入れる）
+│   │   ├── mutate-diff.py          # STEP C.5 独立ミューテーション（変更行に道具が変異を入れる）
+│   │   └── repeat-bypass.sh        # STEP D もぐら叩きの検知（確かめた迂回が同じ部品で続いたか）
 │   └── prompts/                    # エージェントプロンプト（{TEAM} で App / Infra を切り替える）
 │       ├── dev.md                  # Dev implementer（App / Infra 共通。設計判断の記録・JSON通知）
 │       ├── qa.md                   # QA implementer（App / Infra 共通。JSON通知）

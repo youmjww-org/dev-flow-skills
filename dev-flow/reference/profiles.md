@@ -23,6 +23,7 @@ dev-flow は 2 つの実行プロファイルを持つ。**既定は `quality`**
 | conventions-verifier | dev-flow-implementation | opus | sonnet |
 | Dev / QA implementer | dev-flow-implementation | **opus で開始・昇格ラダー無し**（修正は同じ implementer に最大 3 回。再レビューは前回の指摘と修正差分だけを見る） | sonnet で開始 → 設計レベルの指摘で opus に昇格（`task_complexity` で初期値を変更可） |
 | Dev / QA レビュアー | dev-flow-implementation | **codex**（使えなければ opus）。**Dev レビューと QA レビューを同時に起動する** | **codex**（Dev と QA を同時に。使えなければ opus で Dev → QA の順に直列） |
+| 生き残った変異の仕分け（統合検証で生き残りがあったときだけ） | dev-flow-implementation | **codex**（使えなければ opus） | **codex**（使えなければ opus） |
 | test runner | dev-flow-test | **opus 1 本で最大 5 回**（連続無進捗 2 回で打ち切り） | haiku 最大 2 回 → sonnet 最大 3 回 |
 | compliance の準拠チェック | dev-flow-compliance | opus | opus |
 
@@ -52,7 +53,7 @@ quality でも末端の実行者を最初から fork にはしない。fork は�
 - `stage-*-agent` を起動しないので、hook の `pre-agent-check.sh`（プランモード検出・階層深さ・ループ検出）と `agent-complete.sh`（所要時間の記録）は動かない。代わりに：
   - プランモードなら開始前に「プランモードを抜けて（Shift+Tab）から再実行してください」と伝えて終了する
   - 同じステージを 5 回以上やり直していないかを `harness.stage_history` で自分で確認する
-  - ステージ開始・完了時に `harness.stage_history` へ `{stage, model, started_at, completed_at, duration_seconds}` を追記する
+  - ステージ開始・完了時に `harness.stage_history` へ `{stage, model, model_id, started_at, completed_at, duration_seconds}`（`model_id` は環境情報に書かれた自分の正確なモデル ID） を追記する
 - `state-sync.sh`・`doc-validate.sh`・`test-lint.sh`・`test-stage-guard.sh`・`pr-merge-guard.sh` は書き込み・コマンド単位で動くので、quality でもそのまま効く。ただし `state-sync.sh` は Write / Edit にしか反応しないので、**state.json は必ず Read してから Write / Edit で書く**（`jq ... > tmp && mv` などの Bash では書かない。`state-write-guard.sh` が deny する）
 - 下流スキルに「終了する」「最終回答を返す」と書かれている箇所は、オーケストレーターにとっては「そのステージを終えて `dev-flow/SKILL.md` STEP 5 に戻る」と読む。下流スキルに「オーケストレーターに返す」とある JSON・報告は、自分で STEP 5 の判定に使う
 - 下流スキルの AskUserQuestion は、オーケストレーターがそのまま人間に出す

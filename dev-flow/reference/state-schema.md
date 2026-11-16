@@ -73,7 +73,7 @@
     },
     "started_at": "{ISO8601}",
     "stage_history": [
-      { "stage": "requirements", "model": "claude-opus-4-7", "started_at": "...", "completed_at": "...", "duration_seconds": 320 }
+      { "stage": "requirements", "model": "opus", "model_id": "claude-opus-5-5", "started_at": "...", "completed_at": "...", "duration_seconds": 320 }
     ]
   }
 }
@@ -102,6 +102,7 @@
 | `implementation_progress.batches` / `current_batch` | グループが 10 個を超えるときのバッチ分け（最大 8 個ずつ）と、いま実行しているバッチの添字。バッチの区切りで保留中の判断をまとめて聞き、ステージを終える（文脈を空にして次のバッチへ） |
 | `agent_hierarchy` | 階層深さ監視。max_depth=4 を超えたらエスカレーション |
 | `harness` | 再現性メタデータ。requirements 開始時に追加、各ステージ完了時に stage_history を更新 |
+| `harness.stage_history[].model` / `model_id` | `model` は起動時に指定した別名（`opus` / `sonnet` / `haiku`）、`model_id` は実際に動いたモデルの正確な ID（`claude-opus-5-5` など。quality ではオーケストレーターが環境情報に書かれた自分のモデル ID を書く）。別名がどのモデルに当たるかは Claude Code の版や `/model` の設定で変わるので、後から確かめられるよう両方を残す。transcript から実際の値を集計するには `tools/flow-metrics.py` |
 
 ## baseline_commit のライフサイクル
 

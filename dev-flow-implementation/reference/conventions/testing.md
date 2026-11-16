@@ -101,6 +101,13 @@ Dev と QA は別 worktree で並行して書く。**同じ種類のテストを
 ]
 ```
 
+### 独立ミューテーション（統合検証で、道具が変異を選ぶ）
+
+上の確認は書いた本人が壊し方を選ぶので、「テストが検出できる壊し方」に偏る。2026-09〜11 の photo-incident-triage の run では、記録された 461 件がすべて killed だったのに、レビュアーは仕様の値を下限でしか見ないテスト・実装の出力を正解にしたテスト・生き残る変異を 43 件見つけていた。そこで統合検証（`reference/integration-check.md` 3.6）では、`scripts/mutate-diff.py` が変更した行に機械的な変異（比較・論理演算子、真偽値、否定、加減算、整数リテラル）を最大 12 件入れ、Dev のユニットテストと QA の仕様テストをまとめて流す。
+
+- 生き残った変異は implementer に直接直させない。レビュアーが「仕様で決まった振る舞い（→ QA の `test/tc-coverage`）」「実装の分岐（→ Dev の `test/branch-coverage`）」「等価変異」「決まりが無い」に仕分け、前の 2 つだけを指摘にする（`prompts/reviewer-mutants.md`）
+- 生き残りの数は合否にしない。数を減らすこと自体を目標にすると、変異だけを殺す弱いテストが増える。数は台帳（`doc/process/metrics/review-ledger.jsonl`）に残し、テストの強さの推移を見るのに使う
+
 ## レビューチェックリスト（Dev reviewer と QA reviewer で分担。「担当」列を見る）
 
 担当の凡例: **Dev** = Dev worktree のユニットテストを Dev reviewer が見る / **QA** = QA worktree の仕様テストを QA reviewer が見る / **両方** = それぞれの worktree で各 reviewer が見る。
@@ -112,6 +119,7 @@ Dev と QA は別 worktree で並行して書く。**同じ種類のテストを
 | `test/no-delete` | blocker | hook（PR 時） | 既存テストが削除・コメントアウトされていない（移動は可） | hook が deny 済み。`test/commented-out` の WARN を確認 |
 | `test/no-skip` | blocker | hook（Write 時・PR 時） | スキップ・無効化が追加されていない | hook が exit 2 / deny 済み |
 | `test/expected-from-impl` | blocker | — | 期待値が実装の出力を貼ったものでない（テスト定義書の値と一致） | テスト定義書の「具体的な入出力値」と突き合わせ |
+| `test/weak-assertion` | major | — | **両方**: テスト定義書・API 仕様書で決まっている値（件数・金額・文言・順序）を完全一致で確かめている（下限 `>=` / `>`・包含・「どれかに一致」で済ませていない）。並行・競合・順序を確かめるテストが、処理の重なり・入れ替わりを観測している | 期待値の比較演算子と、仕様の値の書き方を突き合わせる。並行の TC はバリア・イベントなどの観測点があるか |
 | `test/error-cases` | major | — | 変更した公開関数・エンドポイントごとに異常系が 1 つ以上ある | 関数ごとに正常系 / 異常系のテスト数を数える |
 | `test/branch-coverage` | major | — | **Dev**: 変更した関数の `if` / `switch` / 早期 return / `catch` それぞれを通るユニットテストがある | Dev reviewer が実装の分岐を列挙して Dev worktree のユニットテストと突き合わせる。`result.coverage` の未到達分岐。無ければ `fix` に「ユニットテスト追加: {関数}: {分岐条件}」と書いて Dev implementer に差し戻す（QA には回さない） |
 | `test/tc-coverage` | major | — | **QA**: テスト定義書の TC が仕様テストとして 1 つずつ実装されている（TC-ID で対応が取れる） | QA reviewer が frontmatter の `test_cases[].id` と QA worktree のテストの TC-ID を突き合わせる。欠けていれば QA implementer に差し戻す |
@@ -172,4 +180,4 @@ Dev と QA は別 worktree で並行して書く。**同じ種類のテストを
 | テストを消す・スキップするのは最終手段 | — | DocDD の「ドキュメントが正解・コードを直す」から導かれる本フロー固有のルール |
 | `sleep` ではなく完了待ち | https://testing-library.com/docs/dom-testing-library/api-async/ 、https://pkg.go.dev/github.com/stretchr/testify/assert#Eventually | |
 | カバレッジ閾値 80% | — | `[opinion]`。`doc/conventions.md` の `coverage_threshold` で変更 |
-| ミューテーション確認 | https://en.wikipedia.org/wiki/Mutation_testing | ツール（Stryker / mutmut / Infection 等）を入れず、書いた本人が手で 1 件ずつ行う簡易版 |
+| ミューテーション確認 | https://en.wikipedia.org/wiki/Mutation_testing | ツール（Stryker / mutmut / Infection 等）を入れず、書いた本人が手で 1 件ずつ行う簡易版。統合検証では別に、道具（`scripts/mutate-diff.py`）が変異を選ぶ独立ミューテーションも行う |

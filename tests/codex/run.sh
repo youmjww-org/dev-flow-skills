@@ -50,11 +50,12 @@ printf 'dirty before\n' > "$repo/pre.txt"           # 開始前から汚れて�
 printf 'prompt body\n' > "$WORK/prompt.md"
 export FAKE_CODEX_ACTION='echo mutated > a.txt; echo junk > junk.txt; echo changed >> pre.txt'
 export FAKE_CODEX_REPLY='{"reviewer":"dev-app-group-1","status":"approved","findings":[{"severity":"major","rule":"maint/dup","file":"a.txt","line":1,"problem":"p","fix":"f"}],"checked_rules":[],"uncertainty_verdicts":[]}'
-job="$("$REVIEW" start impl "$repo" "$WORK/prompt.md" "$WORK/out/impl.json")"; assert_eq "start は 0" "$?" 0
+job="$(FAKE_CODEX_MODEL=gpt-test-1 "$REVIEW" start impl "$repo" "$WORK/prompt.md" "$WORK/out/impl.json")"; assert_eq "start は 0" "$?" 0
 out="$("$REVIEW" wait "$job" 30)"; assert_eq "wait は 0" "$?" 0
 assert_contains "完了行を出す" "$out" "done: status=changes_requested"
 assert_eq "major があれば changes_requested に直す" "$(jq -r .status "$WORK/out/impl.json")" "changes_requested"
 assert_eq "engine を記録する" "$(jq -r .engine "$WORK/out/impl.json")" "codex"
+assert_eq "ログから実際のモデルを記録する" "$(jq -r .model "$WORK/out/impl.json")" "gpt-test-1"
 assert_eq "戻したファイルを記録する" "$(jq -c '.restored_files | sort' "$WORK/out/impl.json")" '["a.txt","junk.txt"]'
 assert_eq "壊された追跡ファイルを戻す" "$(cat "$repo/a.txt")" "original"
 [ ! -e "$repo/junk.txt" ] && ok "新しく作られたファイルを消す" || fail "新しく作られたファイルを消す"
@@ -68,6 +69,21 @@ assert_contains "前置きをプロンプトの先頭に付ける" "$(head -n 1 
 assert_contains "レビュアープロンプトを続ける" "$(cat "$WORK/args.stdin")" "prompt body"
 out2="$("$REVIEW" wait "$job")"; assert_eq "完了後の wait は同じ結果を返す" "$out2" "$out"
 
+echo "== mutants: 生き残った変異の仕分け"
+repo="$(new_repo mutants)"
+export FAKE_CODEX_ACTION='echo mutated > a.txt'
+export FAKE_CODEX_REPLY='{"reviewer":"mutants-app-group-1","status":"approved","findings":[{"severity":"major","rule":"test/tc-coverage","file":"t.py","line":3,"problem":"p","fix":"f"}],"mutant_verdicts":[{"file":"a.py","line":1,"operator":"cmp-ge","verdict":"spec","reason":"r","verified":true,"needs_human":false}]}'
+job="$("$REVIEW" start mutants "$repo" "$WORK/prompt.md" "$WORK/out/mutants.json")"; assert_eq "mutants の start は 0" "$?" 0
+out="$("$REVIEW" wait "$job" 30)"; assert_eq "mutants の wait は 0" "$?" 0
+args="$(cat "$FAKE_CODEX_ARGS")"
+assert_contains "mutants は仕分けのスキーマを渡す" "$args" "schema-mutants-review.json"
+assert_contains "mutants は workspace-write（変異の再現でファイルを一時的に書く）" "$args" "-s workspace-write"
+assert_contains "mutants も impl の前置きを使う" "$(head -n 1 "$WORK/args.stdin")" "Codex で動くときの読み替え"
+assert_eq "major があれば changes_requested に直す" "$(jq -r .status "$WORK/out/mutants.json")" "changes_requested"
+assert_eq "判定をそのまま残す" "$(jq -r '.mutant_verdicts[0].verdict' "$WORK/out/mutants.json")" "spec"
+assert_eq "壊されたファイルを戻す" "$(cat "$repo/a.txt")" "original"
+unset FAKE_CODEX_ACTION
+
 echo "== spec: read-only・後始末しない"
 repo="$(new_repo spec)"
 unset FAKE_CODEX_ACTION
@@ -76,6 +92,7 @@ job="$(DEV_FLOW_CODEX_MODEL=gpt-test DEV_FLOW_CODEX_EFFORT= "$REVIEW" start spec
 out="$("$REVIEW" wait "$job" 30)"; assert_eq "wait は 0" "$?" 0
 assert_contains "指摘の件数を出す" "$out" "指摘=1 件"
 assert_eq "issues をそのまま残す" "$(jq -r '.issues[0].location' "$WORK/out/spec.json")" "TC-001"
+assert_eq "ログにモデルが無ければ model を書かない" "$(jq 'has("model")' "$WORK/out/spec.json")" "false"
 args="$(cat "$FAKE_CODEX_ARGS")"
 assert_contains "spec は read-only" "$args" "-s read-only"
 assert_contains "モデルを指定できる" "$args" "-m gpt-test"

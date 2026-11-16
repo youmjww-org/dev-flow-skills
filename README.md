@@ -479,19 +479,22 @@ dev-flow-skills/
 │   │   ├── conventions/            # 規約とレビューチェックリスト（testing / maintainability は常時、go / python / typescript / react / nextjs / php / laravel / shell は tech_stack で選択）
 │   │   └── agent-prompt-injection.md  # 規約ファイルの選び方・memory注入・ガードレール・昇格通知
 │   ├── scripts/
-│   │   └── ensure-worktree.sh      # STEP A worktree 作成と依存物・.env の準備
+│   │   ├── ensure-worktree.sh      # STEP A worktree 作成と依存物・.env の準備
+│   │   └── mutate-diff.py          # STEP C.5 独立ミューテーション（変更行に道具が変異を入れる）
 │   └── prompts/                    # エージェントプロンプト（{TEAM} で App / Infra を切り替える）
 │       ├── dev.md                  # Dev implementer（App / Infra 共通。設計判断の記録・JSON通知）
 │       ├── qa.md                   # QA implementer（App / Infra 共通。JSON通知）
 │       ├── reviewer-dev.md         # Dev レビュアー（懐疑的レビュー・差分中心）
-│       └── reviewer-qa.md          # QA レビュアー（素朴な質問・TC 網羅）
+│       ├── reviewer-qa.md          # QA レビュアー（素朴な質問・TC 網羅）
+│       └── reviewer-mutants.md     # 統合検証で生き残った変異の仕分け
 ├── dev-flow-test/                  # 5. test
 │   └── SKILL.md                    # テスト実行・モデル昇格
 ├── dev-flow-compliance/            # 6. compliance
 │   └── SKILL.md                    # カバレッジ行列検証・準拠チェック
 ├── tests/
 │   ├── hooks/                      # hooks のスモークテスト（bash tests/hooks/run.sh）
-│   └── metrics/                    # flow-metrics.py のテスト
+│   ├── metrics/                    # flow-metrics.py のテスト
+│   └── mutation/                   # mutate-diff.py（独立ミューテーション）のテスト
 ├── tools/
 │   └── flow-metrics.py             # run の所要時間をステージ・役割・グループごとに集計する
 ├── evals/                          # スキル本体の評価（fixture + 採点器 + claude -p ランナー）。evals/README.md 参照
@@ -552,7 +555,15 @@ python3 tools/flow-metrics.py ~/project/dev-flow-sandbox-api          # Markdown
 python3 tools/flow-metrics.py ~/project/dev-flow-sandbox-api --json   # 比較用に保存する
 ```
 
-出すもの: 経過時間・エージェントの作業時間・人間待ち（ステージ実行の合間）と止まった回数、ステージごとの時間、役割（stage / implementer-dev / implementer-qa / reviewer / writer / checker / test-runner）ごとの数・合計・最長・出力トークン、グループごとの役割別の最長時間、レビューごとの往復回数とエンジン。
+出すもの: 経過時間・エージェントの作業時間・人間待ち（ステージ実行の合間）と止まった回数、ステージごとの時間、役割（stage / implementer-dev / implementer-qa / reviewer / writer / checker / test-runner）ごとの数・合計・最長・出力トークン・実際のモデル ID、メインの会話で使われたモデル ID、グループごとの役割別の最長時間、レビューごとの往復回数とエンジン。
+
+`state.json` の `stage_history` は run ごとに作り直され、`reviews/` と `results/` は git で追跡しないので、run をまたいだ比較には台帳を使います。implementation がグループを終えるたびに `doc/process/metrics/review-ledger.jsonl`（git で追跡）へレビューと完了 JSON の要点を 1 行ずつ残します。
+
+```bash
+python3 tools/flow-metrics.py --ledger ~/project/a ~/project/b         # 複数プロジェクトの台帳をまとめて集計
+```
+
+出すもの: レビューのエンジンごとの 1 回目の差し戻し率と重大な指摘の数（うち規約外・実行で確認したもの）、往復回数の分布、重大な指摘の系統と多い rule、implementer の自己申告（ミューテーション・セルフレビュー）とレビュアーが見つけたテストの弱さの件数。
 
 `stage_history` は run ごとに作り直されるので、集計できるのは最後の run だけです。比べたい run は終わるたびに `--json` を保存してください。codex のレビューはサブエージェントではないので、時間には入らず往復回数だけ数えます。
 

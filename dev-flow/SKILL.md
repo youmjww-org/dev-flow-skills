@@ -208,7 +208,7 @@ jq -e '[.. | strings | select(test("dev-flow/hooks/"))] | length > 0' "$HOME/.cl
 
 **quality（既定）**
 
-1. 「▶ {stage} を開始（直接実行 / opus）」と一行表示し、`harness.stage_history` に `{stage, model: "opus", started_at}` を追記する
+1. 「▶ {stage} を開始（直接実行 / opus）」と一行表示し、`harness.stage_history` に `{stage, model: "opus", model_id, started_at}` を追記する（`model_id` は環境情報に書かれた自分の正確なモデル ID。例 `claude-opus-5-5`。別名の割り当てが変わっても後から分かるようにする）
 2. `${CLAUDE_SKILL_DIR}/../dev-flow-<stage>/SKILL.md` を**全文** Read し、STEP 0 から順に自分で実行する（抜き出し・要約はしない）。Read で読んだ SKILL.md では変数が展開されないので、本文中の `CLAUDE_SKILL_DIR` 変数（ドル記号と波括弧付き）は、そのスキルのディレクトリ（`${CLAUDE_SKILL_DIR}/../dev-flow-<stage>`）と読み替える。他の読み替えは profiles.md に従う
 3. 末端の実行者（writer・implementer・レビュアー・test runner）には profiles.md の quality 列のモデルを `Agent(model=…)` で渡す
 4. 出口（`next_stage` が進んだ、または人間待ち・エスカレーションで止まった）で `stage_history` に `completed_at` / `duration_seconds` を書き、STEP 5 へ

@@ -221,6 +221,31 @@ B0 は人間に聞かない。次の形式で報告し、メインオーケス�
 
 ---
 
+## STEP 2.5: 全体レビュー（グループをまたいで全行を読む）
+
+グループごとのレビューは差分だけを見るので、グループをまたぐ不具合（入力が消える経路・時間の予算の超過・一部の失敗で「問題なし」にする集約）と、同じ関心事がグループごとに違うやり方で作られていること（実装ごとのずれ）は、構造的に見えない。2026-11 に photo-incident-triage（4.4 万行・約 90 グループ）のソースを束に分けて全行読ませたところ、レビュー約 290 件・テスト 1.8 万件をすり抜けた重大な不具合が 5 件見つかった（5 束・1 束約 25 万トークン・最長 8 分）。
+
+**いつやるか:**
+
+| kind | quality | cost |
+|---|---|---|
+| `feature` | やる | やる |
+| `change` / `refactor` | やる（実装の差分が 3 グループ以上のとき。それ未満は飛ばす） | 飛ばす |
+| `fix` | 飛ばす | 飛ばす |
+
+飛ばしたら完了報告の「全体レビュー」に「対象外（kind・グループ数）」と書く。
+
+**手順:**
+
+1. 束に分ける: `python3 ${CLAUDE_SKILL_DIR}/scripts/split-source.py` をプロジェクトのルートで実行する（`doc/process/reviews/whole/chunks.json` に、実装のソースをパスの順に 1 束 9,000 行・最大 6 束で分けたものが書かれる。標準出力は 1 行の要約だけ）。実装が 0 行なら飛ばす
+2. 読み手を起動する: 束ごとに `prompts/whole-review-reader.md` を Read してプレースホルダーを置換し、**全束の Agent を 1 つのメッセージに並べて**起動する（`name="whole-review-reader-{N}"`、`model` は quality: `"opus"` / cost: `"sonnet"`）。`{FILES}` には chunks.json のその束のファイル一覧を、`{SYSTEM_SUMMARY}` には要件定義書の概要の節を 5〜10 行に縮めたものを入れる。読み手の最終回答は 1 行だけ。結果は `doc/process/reviews/whole/reader-{N}.json`（作業ファイル。git で追跡しない）
+3. まとめ役を起動する: 全員の完了を受けたら、`prompts/whole-review-merger.md` を Read して置換し、1 つ起動する（`name="whole-review-merger"`、`model="opus"`）。まとめ役は重大な指摘を自分で確かめ（`confirmed` / `refuted` / `unverified`）、一覧を突き合わせて横断的な関心事のずれを表にし、共通部品の台帳の「既存の重複」「候補」に追記する。結果は `doc/process/whole-review/result.json` と `report.md`（git で追跡する）
+4. 読み手かまとめ役が途中で終わったら、同じ `name` で 1 回だけ起動し直す。それでも結果が無い束は、完了報告に「読めなかった束: {N}（ファイル）」と書いて先へ進む
+
+**結果の扱い:** 全体レビューの指摘は、**この run では直さない**（ドキュメント準拠の乖離ではなく、直すと test からやり直しになる）。人間にも聞かず、フローも止めない。完了報告に載せ、Issue にするか・次の `fix` / `change` の run にするかは人間が決める。`confirmed` の critical があるときだけ、完了報告の先頭に 1 行で書く。
+
+---
+
 ## STEP 3: 人間への完了報告
 
 準拠チェック完了（乖離なし）を確認したら、以下の形式で報告：
@@ -258,6 +283,9 @@ python3 ${CLAUDE_SKILL_DIR}/../tools/flow-metrics.py --ledger . --run "$(jq -r .
 ```
 台帳が無い・この run の行が無いときは「台帳なし」と書く。
 
+### 全体レビュー
+`doc/process/whole-review/report.md` があれば、確かめた重大な指摘（`confirmed`）の表と、横断的な関心事の表をそのまま載せ、件数（`confirmed` / `unverified` / `refuted`）と報告のパスを書く。`confirmed` の critical があれば、レポートの先頭（「## 開発フロー完了レポート」の直後）にも「全体レビューで確かめた重大な不具合が N 件あります（下の「全体レビュー」）」と 1 行書く。飛ばしたときは「対象外（理由）」、読めなかった束があればその束を書く。
+
 ### 規約ファイルへの昇格候補
 `doc/process/review-findings-backlog.md` があれば、その表を「回数」の多い順に完了報告に載せ、候補ごとに推奨（dev-flow-skills の規約へ / このプロジェクトの `doc/conventions.md` へ / 見送り）と理由を添える。**人間には聞かず、フローも止めない**（人間に確認するのは requirements と spec の 2 か所だけ）。追記もしない。人間が報告を読んで、`doc/conventions.md` への追記や dev-flow-skills への PR を後から決める。
 無ければ「レビューで規約外の汎用指摘はありませんでした」と書く。
@@ -276,5 +304,5 @@ python3 ${CLAUDE_SKILL_DIR}/../tools/flow-metrics.py --ledger . --run "$(jq -r .
    - `implementation_progress` を削除
    - `diff_base_commit` と `change_scale` を削除（今回の run だけで使うもの）
    hooks が `task_checklist.md` のステージ進捗を全完了に同期し、`flow.log` に完了を記録する
-3. `git add doc/ && git commit -m "docs: {kind} 完了（{task の要約}）"` で仕様書の status 除去と state.json を確定
+3. `git add doc/ && git commit -m "docs: {kind} 完了（{task の要約}）"` で仕様書の status 除去と state.json を確定（全体レビューの `doc/process/whole-review/` と、共通部品の台帳への追記も含まれる）
 4. 人間に「すべてのステージが完了しました。次の変更は `/dev-flow --kind=change|fix|refactor "内容"` で始められます」と通知

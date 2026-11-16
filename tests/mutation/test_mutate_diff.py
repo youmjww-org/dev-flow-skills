@@ -60,6 +60,8 @@ def check_masks():
     check("py docstring", ops("m.py", py, 3), [])
     check("py f-string の式の中はコード・文字の部分と行末コメントは外す", ops("m.py", py, 5), ["arith-add", "int"])
     check("py code", ops("m.py", py, 6), ["cmp-ge", "int"])
+    check("py is / is not", (ops("m.py", "x = a if k is None else b\n", 1), ops("m.py", "if k is not None:\n    pass\n", 1)),
+          (["is"], ["is-not"]))
     check("py 構文エラーでも落ちない", ops("m.py", "def f(:\n    return a >= 1\n", 2), ["cmp-ge", "int"])
     js = "const a = 1;\n/* block\n   n > 2 && true\n*/\nconst t = `line\n  ${x} + 3`;\nif (a >= 2) { this.#p = !ok; } // 5 < 6\n"
     check("js block comment", ops("m.js", js, 3), [])

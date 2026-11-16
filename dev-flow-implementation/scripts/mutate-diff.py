@@ -16,7 +16,8 @@ photo-incident-triage の run で記録された 461 件がすべて killed だ�
 
 やること:
 1. git diff {base}...HEAD で追加・変更された行のうち、テスト・設定でないソースファイルの行を集める
-2. 行ごとに機械的な変異（比較演算子・論理演算子・真偽値・否定・加減算・整数リテラル）を作る。文字列の中は触らない
+2. 行ごとに機械的な変異（比較演算子・論理演算子・同一性の比較・真偽値・否定・加減算・整数リテラル）を作る。
+   文字列・コメントの中（複数行の docstring・ブロックコメントを含む）は触らない
 3. 変異が多ければ --max 件を決まった乱数（base と HEAD から作る）で選ぶ。同じコミットなら毎回同じ変異になる
 4. 変異なしでテストが通ることを確かめ（通らなければ中止）、変異を 1 件ずつ入れてテストを実行し、必ず元に戻す
 5. テストが失敗した（またはタイムアウトした）変異は killed、通った変異は survived
@@ -63,7 +64,10 @@ OPERATORS = [
     ("logic-or", re.compile(r" (or|\|\|) "), lambda m: " and " if m.group(1) == "or" else " && "),
     ("bool", re.compile(r"\b(True|False|true|false)\b"),
      lambda m: {"True": "False", "False": "True", "true": "false", "false": "true"}[m.group(1)]),
-    ("not", re.compile(r"\bnot "), lambda m: ""),
+    ("not", re.compile(r"(?<!\bis )\bnot "), lambda m: ""),
+    # Python の同一性の比較（`x is None` など）。`is not` → `is`、`is` → `is not`
+    ("is-not", re.compile(r" is not "), lambda m: " is "),
+    ("is", re.compile(r" is (?!not )"), lambda m: " is not "),
     ("bang", re.compile(r"(?<![!=<>\w)\]])!(?=[A-Za-z_($])"), lambda m: ""),
     ("arith-add", re.compile(r" \+ "), lambda m: " - "),
     ("arith-sub", re.compile(r" - "), lambda m: " + "),

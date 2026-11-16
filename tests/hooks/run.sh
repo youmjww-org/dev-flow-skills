@@ -474,6 +474,7 @@ cat > "$dir/doc/process/reviews/group-3-dev-app-r1.json" <<'JSON'
  "uncertainty_verdicts": [{"point": "x", "verdict": "needs_human", "reason": "r"}]}
 JSON
 echo '{"reviewer": "dev-app-group-3", "status": "approved", "engine": "claude", "model": "claude-opus-5-5", "findings": []}' > "$dir/doc/process/reviews/group-3-dev-app-r2.json"
+echo '{"status": "approved", "findings": [], "mutant_verdicts": [{"verdict": "equivalent"}, {"verdict": "spec", "needs_human": true}]}' > "$dir/doc/process/reviews/group-3-mut-app-r1.json"
 echo '{"status": "approved", "findings": []}' > "$dir/doc/process/reviews/group-3-dev-app-r3.json"
 touch -d '2026-10-01' "$dir/doc/process/reviews/group-3-dev-app-r3.json"   # 前の run の残り
 echo '{"status": "approved", "findings": []}' > "$dir/doc/process/reviews/group-31-dev-app-r1.json"   # 別のグループ
@@ -485,15 +486,16 @@ echo '{"status": "done", "result": {"self_review": "古い形式"}}' > "$dir/doc
 out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 21 2>&1)"; rc=$?
 L="$dir/doc/process/metrics/review-ledger.jsonl"
 assert_eq "台帳ありで正常終了" "$rc" "0"
-assert_contains "  台帳の件数を表示" "$out" "レビュー 2 件・完了 JSON 2 件を追記"
-assert_eq "  前の run のファイルと別グループは入れない" "$(jq -r .source "$L" | sort | tr '\n' ' ')" "results/group-3-dev-app.json results/group-3-p2-qa-app.json reviews/group-3-dev-app-r1.json reviews/group-3-dev-app-r2.json "
+assert_contains "  台帳の件数を表示" "$out" "レビュー 3 件・完了 JSON 2 件を追記"
+assert_eq "  前の run のファイルと別グループは入れない" "$(jq -r .source "$L" | sort | tr '\n' ' ')" "results/group-3-dev-app.json results/group-3-p2-qa-app.json reviews/group-3-dev-app-r1.json reviews/group-3-dev-app-r2.json reviews/group-3-mut-app-r1.json "
+assert_eq "  生き残った変異の仕分けの内訳" "$(jq -c 'select(.role=="mut") | .mutant_verdicts' "$L")" '{"spec":1,"branch":0,"equivalent":1,"unspecified":0,"needs_human":1}'
 assert_eq "  レビュー行（エンジン・モデル・件数・実行で確認）" "$(jq -c 'select(.source=="reviews/group-3-dev-app-r1.json") | [.round, .engine, .model, .counts.blocker, .counts.minor, .serious[0].rule, .serious[0].verified, .needs_human]' "$L")" '[1,"codex","gpt-6.1-sol",1,1,"review/allowlist-bypass",true,1]'
 assert_eq "  fix の本文は残さない" "$(grep -c '秘密の修正案' "$L")" "0"
 assert_eq "  完了 JSON 行（自己申告）" "$(jq -c 'select(.source=="results/group-3-dev-app.json") | [.self_review_fixed, .self_mutation, .review_responses.not_fixed]' "$L")" '[2,{"n":2,"killed":2},1]'
 assert_eq "  QA の part を読み取り、古い形式でも落ちない" "$(jq -c 'select(.source=="results/group-3-p2-qa-app.json") | [.part, .role, .self_review_fixed]' "$L")" '[2,"qa",null]'
 assert_contains "  台帳もコミットに入る" "$(cd "$dir" && git show --name-only --format= HEAD)" "doc/process/metrics/review-ledger.jsonl"
 out="$(cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOKS/mark-group-done.sh" 3 21 --no-commit 2>&1)"
-assert_eq "  冪等（2 回目は追記しない）" "$(wc -l < "$L" | tr -d ' ')" "4"
+assert_eq "  冪等（2 回目は追記しない）" "$(wc -l < "$L" | tr -d ' ')" "5"
 rm -rf "$dir"
 
 # ---------------------------------------------------------------------------
@@ -922,6 +924,19 @@ assert_eq "QA は仕様テストが失敗していても 0（Dev 実装待ち）
 jq '.result.integration = {failed: 2}' "$dir/qa.json" > "$dir/qa-int.json"
 out="$("$CHECK" qa "$dir/qa-int.json")"
 assert_contains "統合検証の失敗を NG にする" "$out" "NG 統合検証"
+assert_not_contains "統合検証が失敗中なら独立ミューテーションは求めない" "$out" "独立ミューテーション"
+jq '.result.integration = {failed: 0}' "$dir/qa.json" > "$dir/qa-int-ok.json"
+out="$("$CHECK" qa "$dir/qa-int-ok.json")"; rc=$?
+assert_eq "統合検証が通ったのに独立ミューテーションが無ければ 1" "$rc" "1"
+assert_contains "  理由を出す" "$out" "NG 独立ミューテーション"
+jq '.result.independent_mutation = {tool:"mutate-diff",total:5,killed:3,survived:2}' "$dir/qa-int-ok.json" > "$dir/qa-mut.json"
+out="$("$CHECK" qa "$dir/qa-mut.json")"; rc=$?
+assert_eq "生き残りがあっても合否にはしない" "$rc" "0"
+assert_contains "  生き残りの件数を INFO で出す" "$out" "INFO 独立ミューテーション: 3/5 killed・生き残り 2 件（仕分けが要る）"
+jq '.result.independent_mutation = {skipped:"変更がテストだけ"}' "$dir/qa-int-ok.json" > "$dir/qa-skip.json"
+out="$("$CHECK" qa "$dir/qa-skip.json")"; rc=$?
+assert_eq "理由付きで実行しなかったものは通す" "$rc" "0"
+assert_contains "  理由を INFO で出す" "$out" "INFO 独立ミューテーションは実行しなかった: 変更がテストだけ"
 jq -n '{status:"blocked",blocker_type:"requirement_ambiguity",reason:"x"}' > "$dir/blocked.json"
 out="$("$CHECK" dev "$dir/blocked.json")"
 assert_contains "blocked は status と blocker_type を出す" "$out" "NG status=blocked blocker_type=requirement_ambiguity"

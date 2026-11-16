@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer", "status", "findings", "mutant_verdicts"],
+  "properties": {
+    "reviewer": {"type": "string"},
+    "status": {"type": "string", "enum": ["approved", "changes_requested"]},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "rule", "file", "line", "problem", "fix"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["blocker", "major", "minor", "info"]},
+          "rule": {"type": "string"},
+          "file": {"type": ["string", "null"]},
+          "line": {"type": ["integer", "null"]},
+          "problem": {"type": "string"},
+          "fix": {"type": "string"}
+        }
+      }
+    },
+    "mutant_verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line", "operator", "verdict", "reason", "verified", "needs_human"],
+        "properties": {
+          "file": {"type": "string"},
+          "line": {"type": "integer"},
+          "operator": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["spec", "branch", "equivalent", "unspecified"]},
+          "reason": {"type": "string"},
+          "verified": {"type": "boolean"},
+          "needs_human": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

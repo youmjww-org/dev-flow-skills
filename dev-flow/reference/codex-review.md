@@ -33,7 +33,7 @@ codex でも Claude でも、レビュアーに渡すプロンプト（`prompts/
 ## 起動と待ち方
 
 1. 置換済みのレビュアープロンプトを Write でファイルに書く: `doc/process/reviews/prompts/{レビュー結果と同じ名前}.md`（例 `group-2-dev-app-r1.md`、`spec-test-spec-reviewer-r1.md`）
-2. 起動する。種別は implementation が `impl`（cwd はレビュー対象の worktree）、spec が `spec`（cwd はメインの作業ディレクトリ）
+2. 起動する。種別は implementation が `impl`（cwd はレビュー対象の worktree）、統合検証で生き残った変異の仕分けが `mutants`（cwd は int worktree）、spec が `spec`（cwd はメインの作業ディレクトリ）
 
    ```bash
    ~/.claude/skills/dev-flow/codex/review.sh start impl {worktree} doc/process/reviews/prompts/group-2-dev-app-r1.md doc/process/reviews/group-2-dev-app-r1.json
@@ -61,7 +61,7 @@ codex のハングは `review.sh` の上限（`DEV_FLOW_CODEX_TIMEOUT`、既定 
 ## codex 特有の注意
 
 - `review.sh` はレビュアープロンプトの前に `codex/preamble-impl.md` / `preamble-spec.md`（Claude Code のツール名の読み替え・JSON だけを返す・sandbox の制約）を付けて渡し、出力を `codex/schema-*.json` のスキーマで固定する
-- sandbox: `impl` は workspace-write（worktree の中でテスト・lint を実行でき、ネットワークも使える）、`spec` は read-only
+- sandbox: `impl` と `mutants` は workspace-write（worktree の中でテスト・lint を実行でき、ネットワークも使える。`mutants` の前置きは `preamble-impl.md`、スキーマは `schema-mutants-review.json`）、`spec` は read-only
 - sandbox では `.git` に書けないので、ミューテーションの再現は `cp` で退避・書き戻しをさせている。戻し忘れは `wait` が `git checkout` で戻し、`restored_files` に記録する（開始前から汚れていたファイルには触らない）
 - codex はプロジェクトの `AGENTS.md` を読む。Claude Code の `CLAUDE.md` は読まないので、規約は従来どおり `{REVIEW_CHECKLIST}` で渡す
 - モデル・推論の強さは環境変数 `DEV_FLOW_CODEX_MODEL` / `DEV_FLOW_CODEX_EFFORT`（既定 `high`）で変えられる。codex を一時的に止めるだけなら `DEV_FLOW_CODEX=off`

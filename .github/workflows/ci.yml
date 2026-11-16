@@ -33,3 +33,6 @@ jobs:
 
       - name: run 集計スクリプトのテスト
         run: python3 tests/metrics/test_flow_metrics.py
+
+      - name: 独立ミューテーション（mutate-diff.py）のテスト
+        run: python3 tests/mutation/test_mutate_diff.py

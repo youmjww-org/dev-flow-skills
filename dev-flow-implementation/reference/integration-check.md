@@ -2,7 +2,7 @@
 
 `dev-flow-implementation/SKILL.md` STEP C.5 から参照。
 
-**誰がやるか:** 0 の確認と int worktree の作成はオーケストレーター、2〜3.5 は **QA implementer**（オーケストレーターが `SendMessage` でこのファイルのパスと int worktree のパスを渡して頼む）。レビューと同時に走らせる（int worktree はレビュアーが見る worktree と別なので干渉しない）。テストの出力をオーケストレーターの文脈に入れないため。QA implementer は結果を `{RESULT_FILE}` の `result.integration` と `result.mutation` に書いて 1 行で返し、オーケストレーターは `check-result.sh qa {RESULT_FILE}` で判定する。
+**誰がやるか:** 0 の確認と int worktree の作成はオーケストレーター、2〜3.6 は **QA implementer**（オーケストレーターが `SendMessage` でこのファイルのパスと int worktree のパスを渡して頼む）。レビューと同時に走らせる（int worktree はレビュアーが見る worktree と別なので干渉しない）。テストの出力をオーケストレーターの文脈に入れないため。QA implementer は結果を `{RESULT_FILE}` の `result.integration`・`result.mutation`・`result.independent_mutation` に書いて 1 行で返し、オーケストレーターは `check-result.sh qa {RESULT_FILE}` で判定する。
 
 **手順（グループごと、Dev/QA 両方の implementer が `completed` を返した後）:**
 
@@ -26,6 +26,15 @@
    | 実装側の不備（QA の期待がテスト定義書どおりで、実装がそれに従っていない） | QA implementer は `result.integration.cause = "impl"` と失敗の切り分けを書いて返す。オーケストレーターが Dev implementer に `SendMessage` で `{RESULT_FILE}` のパスを渡して直させ、直った後に QA へ 1 からのやり直しを頼む |
    | テスト定義書自体の矛盾 | QA implementer は `cause = "spec"` と `doc_issues` を書いて返す。オーケストレーターは `doc_issues` に記録し、実装の現状を仮の答えにして進める（人間に聞くのは聞くタイミングでまとめて。[pending-decisions.md](pending-decisions.md)） |
 3.5. **ミューテーション確認（3 で全パスした後）**: QA implementer が続けて、「この int worktree で、あなたが書いた仕様テストのうち異常系・境界値を優先して最大 5 件、[conventions/testing.md](conventions/testing.md) の『ミューテーション確認』をして、`result.mutation` を返す（壊した実装は必ず元に戻す。コミットしない）」を行う。QA は自分の worktree に実装が無いので、ここが唯一できる場所。`killed: false` があればテストを強化し、2 からやり直す。結果は `{RESULT_FILE}` に残り、QA reviewer がそこから読む
+3.6. **独立ミューテーション（3.5 の後）**: QA implementer が続けて、変異を**道具に選ばせる**確認を行う。3.5 は書いた本人が壊し方を選ぶので「検出できる壊し方」に偏る（2026-09〜11 の photo-incident-triage では、記録された 461 件がすべて killed なのに、レビュアーが弱いテストを 43 件見つけていた）。ここでは変更した行に機械的な変異を入れ、Dev のユニットテストと QA の仕様テストをまとめて流す：
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/mutate-diff.py --worktree {MAIN_DIR}/../worktree-int-{team}-group-N \
+     --base {DIFF_BASE} --test-cmd "<このグループのユニットテストと仕様テストを流すコマンド>" --result-file {RESULT_FILE}
+   ```
+   - `--test-cmd` は、このグループの変更に関係するテスト（Dev のユニットテストと QA の仕様テストのファイル）に絞ったコマンドにする。変異 1 件ごとに流すので、スイート全体が 2 分を超えるなら絞る。絞りすぎると生き残りが増えるだけで、結果をよく見せることはできない
+   - 変異は最大 12 件（`--max`）。同じコミットなら毎回同じ変異が選ばれる。終わるとファイルは必ず元に戻る（戻せなかったら止まって知らせる）
+   - **生き残った変異があってもテストを直さない**。何を直すべきかは、オーケストレーターが起動するレビュアーが仕分けて指摘にする（SKILL.md STEP C.5「生き残った変異の仕分け」）。生き残りを減らすこと自体を目的にすると、変異だけを殺す弱いテストが増える
+   - 変更が設定・テストだけで変異を入れる行が無ければ、`total: 0` が書かれる（それでよい）。ツールが動かない言語・環境なら `result.independent_mutation = {"skipped": "<理由>"}` を書く
 4. QA implementer は `result.integration` に、検証した Dev / QA ブランチの HEAD（`dev_head` / `qa_head`。`git rev-parse dev/{team}-group-N qa/{team}-group-N`）を書く。オーケストレーターはこれが今の HEAD と一致するかで、最後の修正の後に統合検証が済んでいるかを判断する。int worktree は次の検証か STEP F で消すので、取り消しは要らない
 5. オーケストレーターは `check-result.sh qa {RESULT_FILE}` の 1 行目と統合検証の件数を STEP E の PR 説明に 1 行で書く
 

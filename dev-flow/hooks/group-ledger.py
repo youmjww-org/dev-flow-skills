@@ -10,7 +10,8 @@ dev-flow 自体の改修（どの仕組みが効いているか）を記録か�
 
 読むもの:
 - doc/process/state.json … run の開始時刻（harness.started_at）と kind
-- doc/process/reviews/group-{N}[-pK]-{dev|qa}-{app|infra}-r{K}.json … 更新時刻が run の開始より後のものだけ
+- doc/process/reviews/group-{N}[-pK]-{dev|qa|mut}-{app|infra}-r{K}.json … 更新時刻が run の開始より後のものだけ
+  （mut は統合検証で生き残った変異の仕分け。reviewer-mutants.md）
 - doc/process/results/group-{N}[-pK]-{dev|qa}-{app|infra}.json … 同上
 
 書くもの: doc/process/metrics/review-ledger.jsonl（追記のみ。同じ run の同じファイルは 2 回書かない＝冪等）
@@ -27,7 +28,7 @@ LEDGER = "doc/process/metrics/review-ledger.jsonl"
 PROBLEM_CHARS = 300
 SEVERITIES = ("blocker", "major", "minor", "info")
 # group-102-dev-app-r3.json / group-5-p2-qa-app-r1.json（QA の part は {GROUP_N} = N-pK）
-REVIEW_RE = re.compile(r"^group-(?P<g>\d+)(?:-p(?P<p>\d+))?-(?P<role>dev|qa)-(?P<team>app|infra)-r(?P<r>\d+)\.json$")
+REVIEW_RE = re.compile(r"^group-(?P<g>\d+)(?:-p(?P<p>\d+))?-(?P<role>dev|qa|mut)-(?P<team>app|infra)-r(?P<r>\d+)\.json$")
 RESULT_RE = re.compile(r"^group-(?P<g>\d+)(?:-p(?P<p>\d+))?-(?P<role>dev|qa)-(?P<team>app|infra)\.json$")
 
 
@@ -78,6 +79,12 @@ def review_row(data):
         if f.get("severity") in ("blocker", "major")
     ]
     verdicts = data.get("uncertainty_verdicts") or []
+    mutants = [m for m in (data.get("mutant_verdicts") or []) if isinstance(m, dict)]
+    row_mutants = None
+    if mutants:
+        row_mutants = {v: sum(1 for m in mutants if m.get("verdict") == v)
+                       for v in ("spec", "branch", "equivalent", "unspecified")}
+        row_mutants["needs_human"] = sum(1 for m in mutants if m.get("needs_human"))
     return {
         "type": "review",
         "engine": first_word(data.get("engine") or data.get("reviewer_engine")),
@@ -87,6 +94,7 @@ def review_row(data):
         "counts": counts,
         "serious": serious,
         "needs_human": sum(1 for v in verdicts if isinstance(v, dict) and v.get("verdict") == "needs_human"),
+        "mutant_verdicts": row_mutants,
     }
 
 

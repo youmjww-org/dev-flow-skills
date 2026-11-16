@@ -4,10 +4,11 @@
 #
 #   review.sh available
 #       codex でレビューできるか。0: できる / 3: できない（理由を 1 行出す）
-#   review.sh start <impl|spec> <cwd> <prompt-file> <out-json>
+#   review.sh start <impl|spec|mutants> <cwd> <prompt-file> <out-json>
 #       バックグラウンドで codex exec を起動し、ジョブディレクトリのパスを 1 行出す
 #       impl: implementation の Dev / QA レビュー（cwd は worktree。workspace-write でテストを実行できる）
 #       spec: spec の reviewer（cwd はメインの作業ディレクトリ。read-only）
+#       mutants: 統合検証で生き残った変異の仕分け（cwd は int worktree。impl と同じ扱い）
 #   review.sh wait <job-dir> [秒（既定 540）]
 #       終わるまで待つ。0: 完了（out-json を書いた）/ 124: まだ動いている（もう一度 wait する）/
 #       4: 失敗（理由を出す。Claude のレビュアーに切り替える）
@@ -57,6 +58,8 @@ cmd_start() {
   case "$kind" in
     impl) mode="workspace-write"; schema="$HERE/schema-impl-review.json"; preamble="$HERE/preamble-impl.md" ;;
     spec) mode="read-only";       schema="$HERE/schema-spec-review.json"; preamble="$HERE/preamble-spec.md" ;;
+    # 生き残った変異の仕分け（implementation STEP C.5）。変異の再現でファイルを一時的に書くので impl と同じ扱い
+    mutants) mode="workspace-write"; schema="$HERE/schema-mutants-review.json"; preamble="$HERE/preamble-impl.md" ;;
     *) usage ;;
   esac
   [ -d "$cwd" ] || die "cwd が無い: $cwd"
@@ -75,7 +78,7 @@ cmd_start() {
 
   local args=(exec -C "$cwd" -s "$mode" --ephemeral --skip-git-repo-check --color never
               --output-schema "$schema" -o "$job/last.json")
-  [ "$kind" = impl ] && args+=(-c sandbox_workspace_write.network_access=true)
+  [ "$kind" != spec ] && args+=(-c sandbox_workspace_write.network_access=true)
   [ -n "${DEV_FLOW_CODEX_MODEL:-}" ] && args+=(-m "$DEV_FLOW_CODEX_MODEL")
   local effort="${DEV_FLOW_CODEX_EFFORT-high}"
   [ -n "$effort" ] && args+=(-c "model_reasoning_effort=\"$effort\"")
@@ -137,7 +140,7 @@ cmd_wait() {
 
   kind="$(cat "$job/kind")"
   restored="[]"
-  if [ "$kind" = impl ]; then
+  if [ "$kind" != spec ]; then
     restored="$(restore_worktree "$job" | jq -R . | jq -sc .)"
   fi
 

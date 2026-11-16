@@ -393,7 +393,17 @@ def build_ledger_report(rows):
     rules = defaultdict(int)
     max_round = {}
     weak_tests = 0
+    mutant_verdicts = defaultdict(int)
     for r in reviews:
+        if r.get("role") == "mut":
+            # 生き残った変異の仕分けは通常のレビューと性質が違うので、エンジン・往復の集計には入れない
+            for k, v in (r.get("mutant_verdicts") or {}).items():
+                mutant_verdicts[k] += v or 0
+            for x in r.get("serious") or []:
+                rule = str(x.get("rule") or "none")
+                prefixes[rule.split("/")[0]][x.get("severity")] += 1
+                rules[rule] += 1
+            continue
         e = engines[r.get("engine") or "unknown"]
         e["reviews"] += 1
         serious = r.get("serious") or []
@@ -446,6 +456,7 @@ def build_ledger_report(rows):
             "groups": len(indep),
             "total": sum(x.get("total") or 0 for x in indep),
             "survived": sum(x.get("survived") or 0 for x in indep),
+            "verdicts": dict(sorted(mutant_verdicts.items())),
         },
     }
 
@@ -481,7 +492,9 @@ def render_ledger_markdown(r):
         f"- セルフレビューで直した件数の平均: {sr['self_review_fixed_avg']}",
     ]
     if im["groups"]:
-        out.append(f"- オーケストレーター側のミューテーション: {im['groups']} 件で計 {im['total']} 変異、生き残り {im['survived']}")
+        out.append(f"- 道具が選んだミューテーション（mutate-diff）: {im['groups']} 件で計 {im['total']} 変異、生き残り {im['survived']}")
+        if im["verdicts"]:
+            out.append("- 生き残りの仕分け: " + "・".join(f"{k} {v}" for k, v in im["verdicts"].items()))
     return "\n".join(out)
 
 

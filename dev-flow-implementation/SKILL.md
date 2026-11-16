@@ -214,9 +214,14 @@ QA は Dev の実装を見ずにインターフェースを推測してテスト
 
 統合は Dev / QA の worktree とは別の使い捨ての worktree（`ensure-worktree.sh int {team} N dev/{team}-group-N qa/{team}-group-N`、毎回作り直す）で行う。レビュアーが見ている worktree を書き換えないので、**レビューと同時に**走らせてよい。
 
-**オーケストレーターは自分でテストを流さず、QA implementer に `SendMessage` で頼む**（テストの出力がオーケストレーターの文脈に入らないようにする）。手順（int worktree で Dev ユニット + QA 仕様テスト・lint・型検査 → 不備の切り分け → QA のミューテーション確認 → 結果を `{RESULT_FILE}` の `result.integration` に書く）は [reference/integration-check.md](reference/integration-check.md) に従う。QA の part ごとに、それぞれ int worktree を作って行う（`N-pK`）。
+**オーケストレーターは自分でテストを流さず、QA implementer に `SendMessage` で頼む**（テストの出力がオーケストレーターの文脈に入らないようにする）。手順（int worktree で Dev ユニット + QA 仕様テスト・lint・型検査 → 不備の切り分け → QA のミューテーション確認 → 道具が変異を選ぶ独立ミューテーション → 結果を `{RESULT_FILE}` の `result.integration` / `result.independent_mutation` に書く）は [reference/integration-check.md](reference/integration-check.md) に従う。QA の part ごとに、それぞれ int worktree を作って行う（`N-pK`）。
 
-**PR に進む条件:** Dev・QA のレビューがどちらも承認、かつ**最後の修正より後の**統合検証が通っていること（`result.integration.dev_head` / `qa_head` が今のブランチの HEAD と一致する）。修正が入ったら、再レビューと統合検証のやり直しを同時に起動する。
+**生き残った変異の仕分け:** `check-result.sh qa` が `INFO 独立ミューテーション: … 生き残り N 件（仕分けが要る）` を出したら、`prompts/reviewer-mutants.md` でレビュアーを 1 つ起動する。生き残りの一覧は implementer に渡さない（implementer が「変異を殺すこと」を目標にすると、変異だけを殺す弱いテストが増える。論文 arXiv:2610.38977 の「最適化に使ったシグナルで評価しない」）。
+- エンジン・待ち方は STEP D と同じ（codex なら `review.sh start mutants <int worktree> <プロンプト> doc/process/reviews/group-{N}-mut-{team}-r{K}.json`、Claude なら `model="opus"`）。仕分けが動いている間は、その int worktree を作り直さない
+- 指摘は rule で振り分ける: `test/tc-coverage` → QA implementer、`test/branch-coverage` → Dev implementer。渡し方は STEP D の修正ループと同じ（ファイルのパスを渡して全件を読ませる）。`mutant_verdicts` の `needs_human: true` は `pending_decisions.md` に積み、仮に「テストを足さない」としてグループは止めない
+- 直した後は、再レビューと統合検証（3.6 を含む）をやり直す。新しく生き残った変異があれば仕分けも続けるが、**仕分けは 1 グループ 2 回まで**（3 回目以降の生き残りは台帳に残すだけで指摘にしない。同じテストを何度も締め直すより、次のグループへ進む方が効く）
+
+**PR に進む条件:** Dev・QA のレビューがどちらも承認、かつ**最後の修正より後の**統合検証が通っていること（`result.integration.dev_head` / `qa_head` が今のブランチの HEAD と一致する）。その統合検証で変異が生き残っていたら、その仕分けも承認（または 2 回の上限に到達）していること。修正が入ったら、再レビューと統合検証のやり直しを同時に起動する。
 
 ---
 

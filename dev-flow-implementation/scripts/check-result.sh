@@ -37,6 +37,12 @@ else
   if jq -e '.result.integration' "$file" >/dev/null 2>&1; then
     check '.result.integration.failed == 0' "統合検証の失敗が 0"
     check '([.result.mutation[]? | select(.killed == false)] | length == 0)' "統合検証のミューテーション確認で生き残った変異が無い"
+    # 独立ミューテーション（integration-check.md 3.6）。統合検証が通った後だけ求める。
+    # 生き残りの数は合否にしない（仕分けの材料。implementer に直させる目標にすると、また攻略される）
+    if jq -e '.result.integration.failed == 0' "$file" >/dev/null 2>&1; then
+      check '(.result.independent_mutation | type == "object") and ((.result.independent_mutation.total | type == "number") or (.result.independent_mutation.skipped | type == "string"))' "独立ミューテーション（mutate-diff.py）の結果がある"
+      jq -r '.result.independent_mutation // {} | if .skipped then "INFO 独立ミューテーションは実行しなかった: \(.skipped)" elif (.survived // 0) > 0 then "INFO 独立ミューテーション: \(.killed)/\(.total) killed・生き残り \(.survived) 件（仕分けが要る）" elif .total != null then "INFO 独立ミューテーション: \(.killed)/\(.total) killed・生き残り 0" else empty end' "$file"
+    fi
   fi
 fi
 exit "$ng"

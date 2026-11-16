@@ -32,6 +32,10 @@ def check_ledger(check):
                      {"severity": "major", "rule": "test/tc-coverage", "verified": False}]},
         {"type": "review", "run": "r1", "group": "1", "part": None, "role": "dev", "team": "app", "round": 2,
          "engine": "codex", "status": "approved", "serious": []},
+        {"type": "review", "run": "r1", "group": "1", "part": None, "role": "mut", "team": "app", "round": 1,
+         "engine": "codex", "status": "changes_requested",
+         "serious": [{"severity": "major", "rule": "test/tc-coverage"}],
+         "mutant_verdicts": {"spec": 1, "branch": 0, "equivalent": 2, "unspecified": 1, "needs_human": 0}},
         {"type": "result", "run": "r1", "group": "1", "role": "dev", "team": "app", "self_review_fixed": 2,
          "self_mutation": {"n": 3, "killed": 3}, "independent_mutation": {"tool": "mutmut", "total": 10, "survived": 4}},
     ]
@@ -50,19 +54,21 @@ def check_ledger(check):
         args = [sys.executable, str(SCRIPT), "--ledger", str(tmp / "a"), str(tmp / "b" / "doc/process/metrics/review-ledger.jsonl")]
         r = json.loads(subprocess.run(args + ["--json"], capture_output=True, text=True, check=True).stdout)
         md = subprocess.run(args, capture_output=True, text=True, check=True).stdout
-    check("ledger runs", (r["runs"], r["reviews"], r["results"]), (2, 3, 2))
+    check("ledger runs", (r["runs"], r["reviews"], r["results"]), (2, 4, 2))
     check("ledger projects", len(r["projects"]), 2)
     eng = {x["engine"]: x for x in r["engines"]}
     check("ledger codex", (eng["codex"]["r1"], eng["codex"]["r1_changes_pct"], eng["codex"]["serious_per_review"],
                            eng["codex"]["serious_outside"], eng["codex"]["verified"]), (1, 100, 1.0, 1, 1))
     check("ledger claude", (eng["claude"]["r1_changes_pct"], eng["claude"]["serious"]), (0, 0))
     check("ledger rounds", r["rounds"], [{"max_round": 1, "count": 1}, {"max_round": 2, "count": 1}])
-    check("ledger prefixes", [(x["prefix"], x["total"]) for x in r["serious_by_prefix"]], [("review", 1), ("test", 1)])
+    check("ledger prefixes", [(x["prefix"], x["total"]) for x in r["serious_by_prefix"]], [("test", 2), ("review", 1)])
     check("ledger self reported", r["self_reported"],
           {"mutation_total": 4, "mutation_killed": 4, "self_review_fixed_avg": 3.0, "weak_test_findings": 1})
-    check("ledger independent", r["independent_mutation"], {"groups": 1, "total": 10, "survived": 4})
+    check("ledger independent", r["independent_mutation"], {"groups": 1, "total": 10, "survived": 4,
+          "verdicts": {"branch": 0, "equivalent": 2, "needs_human": 0, "spec": 1, "unspecified": 1}})
+    check("ledger mutants markdown", "- 生き残りの仕分け: branch 0・equivalent 2・needs_human 0・spec 1・unspecified 1" in md, True)
     check("ledger markdown", "| codex | 2 | 1 | 100% | 1.0 | 1 | 1 |" in md, True)
-    check("ledger markdown header", md.splitlines()[0], "# dev-flow 台帳の集計（2 run・レビュー 3 件・完了 JSON 2 件）")
+    check("ledger markdown header", md.splitlines()[0], "# dev-flow 台帳の集計（2 run・レビュー 4 件・完了 JSON 2 件）")
     # --run で 1 run に絞る（表記の違う同じ時刻も一致させる）
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "doc/process/metrics/review-ledger.jsonl"

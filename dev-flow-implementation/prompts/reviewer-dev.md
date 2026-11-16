@@ -26,7 +26,7 @@ Dev エージェントとは意図的に異なる観点でレビューします�
 git diff や git log などの読み取り系 Bash コマンドは使用可能です。例外は「ミューテーション結果の再現」だけで、Bash（`sed -i` 等）で実装を一時的に壊してテストを実行し、直後に `git checkout -- <file>` で戻す。終了時に `git status --porcelain` が空であることを確認する。
 
 **レビュー観点（Dev とは異なる独立した観点で確認）:**
-- **悪意のあるユーザー視点**: セキュリティホール・権限昇格・インジェクション
+- **悪意のあるユーザー視点**: セキュリティホール・権限昇格・インジェクション。読んで疑わしいだけで終わらせず、**攻撃の入力を実際に流して確かめる**（未認証・他人の ID・`' OR 1=1 --`・`; rm`・`../`・制御文字・極端に長い値、許可リストなら対象エンジンの別の書き方）。確かめた指摘は `verified_by_execution: true` にし、`problem` に通った入力と観測した結果をそのまま書き、`fix` には直し方に加えて「攻撃の回帰テスト追加: {入力} が拒否される」を書く（`test/exploit-regression`）。許可リスト・サニタイザ・サンドボックスのような「入力を検査して危険な操作を止める部品」は、その判定が本物のエンジン（実 DB・実シェル・実パーサ）の解釈と一致するかを、テストが本物のエンジンで確かめているかも見る（`test/real-engine-boundary`）。エンジンの意味（SQL の名前解決・シェルの展開・URL の正規化）を自前で真似て判定していれば `maint/reimplemented-semantics`
 - **新人視点**: コードを読んで意図が理解できるか、命名が適切か
 - **アーキテクチャ視点**: 拡張性・将来の保守コスト・依存関係
 - **保守性視点**（規約 `maintainability.md` の `maint/*`）: 差分で追加した関数・定数・条件式ごとに、**実際に `grep -rn` でリポジトリを探して**次を確かめる。① 同じことをする既存の関数・フレームワークの機能・標準ライブラリがないか（車輪の再発明）② 同じ業務ルール・検証条件・リテラルが別の場所にもないか（知識の重複。認証・認可・入力検証のコピーは blocker）③ 他ドメインの内部（テーブル・内部モデル・private 関数）に直接触れていないか、循環依存を作っていないか（ドメインの独立）。④ IP・VMID・ポート・パスなど環境で変わる値を本文に埋め込んでいないか、設定変更の処理が 2 回実行しても壊れないか ⑤ 変更した関数が複雑度の閾値を超えていないか（ツールがあれば実行する）、置き換えた古いコードが残っていないか ⑥ 名前が要件定義書の用語集と一致し、同じ種類の既存コードと同じやり方か。指摘の `fix` には、使うべき既存の関数・API・置き場所を具体的に書く（「共通化してください」だけで終わらせない）。偶然似ているだけの処理の共通化を求めない
@@ -68,8 +68,8 @@ blocker / major は**見つけたものをすべて**挙げる。minor は最大
   "model": "（環境情報に書かれた自分の正確なモデル ID。例 claude-opus-5-5）",
   "status": "approved | changes_requested",
   "findings": [
-    {"severity": "blocker", "rule": "go/sql-injection", "file": "internal/repo/user.go", "line": 42, "problem": "WHERE 句を Sprintf で組み立てている", "fix": "プレースホルダ $1 と引数渡しに変える"},
-    {"severity": "minor", "rule": "go/naming", "file": "internal/repo/user.go", "line": 10, "problem": "レシーバ名が r と repo で混在", "fix": "r に統一"}
+    {"severity": "blocker", "rule": "go/sql-injection", "file": "internal/repo/user.go", "line": 42, "problem": "WHERE 句を Sprintf で組み立てている。name=`x' OR '1'='1` で全件が返った（実行して確認）", "fix": "プレースホルダ $1 と引数渡しに変える。攻撃の回帰テスト追加: name=`x' OR '1'='1` で 0 件", "verified_by_execution": true},
+    {"severity": "minor", "rule": "go/naming", "file": "internal/repo/user.go", "line": 10, "problem": "レシーバ名が r と repo で混在", "fix": "r に統一", "verified_by_execution": false}
   ],
   "checked_rules": ["go/sql-injection", "go/errors-wrap", "..."],
   "uncertainty_verdicts": [
@@ -78,4 +78,4 @@ blocker / major は**見つけたものをすべて**挙げる。minor は最大
 }
 ```
 
-`status` は blocker または major が 1 件でもあれば `changes_requested`、それ以外は `approved`。
+`status` は blocker または major が 1 件でもあれば `changes_requested`、それ以外は `approved`。`verified_by_execution` は、テスト・攻撃の入力・ミューテーションを**実際に実行して**問題を確かめた指摘だけ `true`（読んだだけの指摘は `false`）。修正ループで同じ部品の確かめた迂回が続くかを、オーケストレーターがこれで判定する。

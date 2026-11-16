@@ -64,6 +64,10 @@ args="$(cat "$FAKE_CODEX_ARGS")"
 assert_contains "impl は workspace-write" "$args" "-s workspace-write"
 assert_contains "impl はネットワークを許可" "$args" "sandbox_workspace_write.network_access=true"
 assert_contains "出力スキーマを渡す" "$args" "schema-impl-review.json"
+for schema in impl mutants; do
+  assert_eq "$schema のスキーマは verified_by_execution を必須にする（strict）" \
+    "$(jq -c '.properties.findings.items | [(.required | index("verified_by_execution") != null), .properties.verified_by_execution.type]' "$ROOT/dev-flow/codex/schema-$schema-review.json")" '[true,"boolean"]'
+done
 assert_contains "既定の推論の強さは high" "$args" 'model_reasoning_effort="high"'
 assert_contains "前置きをプロンプトの先頭に付ける" "$(head -n 1 "$WORK/args.stdin")" "Codex で動くときの読み替え"
 assert_contains "レビュアープロンプトを続ける" "$(cat "$WORK/args.stdin")" "prompt body"

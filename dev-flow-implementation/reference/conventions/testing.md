@@ -119,6 +119,8 @@ Dev と QA は別 worktree で並行して書く。**同じ種類のテストを
 | `test/no-delete` | blocker | hook（PR 時） | 既存テストが削除・コメントアウトされていない（移動は可） | hook が deny 済み。`test/commented-out` の WARN を確認 |
 | `test/no-skip` | blocker | hook（Write 時・PR 時） | スキップ・無効化が追加されていない | hook が exit 2 / deny 済み |
 | `test/expected-from-impl` | blocker | — | 期待値が実装の出力を貼ったものでない（テスト定義書の値と一致） | テスト定義書の「具体的な入出力値」と突き合わせ |
+| `test/exploit-regression` | major | — | **Dev**: レビューで実行して確かめた攻撃（`verified_by_execution: true` の指摘）ごとに、その攻撃の入力をそのまま使った回帰テストがあり、直す前のコミットでは落ちる | 前回の `{REVIEW_FILE}` の確かめた指摘の入力を `grep -rn` でテストから探す。無ければ major |
+| `test/real-engine-boundary` | major | — | **両方**: 入力を検査して危険な操作を止める部品（SQL・シェル・パス・URL・HTML の許可リスト・サニタイザ・サンドボックス）のテストに、本物のエンジン（実 DB・実シェル・実パーサ）へ攻撃の入力を流し、実行されない（副作用が無い）ことを観測するものがある。自前の構文解析やモックだけで確かめていない | 部品のテストの実行環境を見る（モック・自前のパーサだけなら major） |
 | `test/weak-assertion` | major | — | **両方**: テスト定義書・API 仕様書で決まっている値（件数・金額・文言・順序）を完全一致で確かめている（下限 `>=` / `>`・包含・「どれかに一致」で済ませていない）。並行・競合・順序を確かめるテストが、処理の重なり・入れ替わりを観測している | 期待値の比較演算子と、仕様の値の書き方を突き合わせる。並行の TC はバリア・イベントなどの観測点があるか |
 | `test/error-cases` | major | — | 変更した公開関数・エンドポイントごとに異常系が 1 つ以上ある | 関数ごとに正常系 / 異常系のテスト数を数える |
 | `test/branch-coverage` | major | — | **Dev**: 変更した関数の `if` / `switch` / 早期 return / `catch` それぞれを通るユニットテストがある | Dev reviewer が実装の分岐を列挙して Dev worktree のユニットテストと突き合わせる。`result.coverage` の未到達分岐。無ければ `fix` に「ユニットテスト追加: {関数}: {分岐条件}」と書いて Dev implementer に差し戻す（QA には回さない） |

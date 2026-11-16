@@ -252,6 +252,13 @@ Cross は infra 層 → app 層の順を保つ。
 ```
 
 - minor は修正ループに回さない（記録だけ）。同じ `rule` が 3 回以上出たら memory に保存する
+- **もぐら叩きの検知（2 回目以降の `changes_requested`）**: 指摘を渡す前に `${CLAUDE_SKILL_DIR}/scripts/repeat-bypass.sh <前回の REVIEW_FILE> <今回の REVIEW_FILE>` を実行する。終了コード 0（`REPEAT rule=… file=…` が出る）なら、レビュアーが実行して確かめた迂回が同じ部品で 2 回続いている。入力を 1 つずつ塞ぐ修正を続けても収まらない（2026-11 の run では r1〜r5 まで続き、人間が方式の変更を決めた）ので、上の依頼文に次を足して渡す。人間には聞かない：
+  ```
+  同じ部品で、実行して確かめた迂回が 2 回続けて見つかりました（{REPEAT の行}）。指摘の入力だけを塞ぐ修正はやめ、方式を見直してください。
+  (1) 安全の判定を本物のエンジンにさせる（実行計画・dry-run・エンジンの正規化 API・権限で止める）か、自前の検査を残すなら本物のエンジンでの確認と二重にする（規約 maint/reimplemented-semantics）
+  (2) これまでのレビューで確かめた攻撃の入力を、すべて回帰テストにする（test/exploit-regression）
+  (3) どう方式を変えたかを review_responses に書く。方式を変えるのに要件・仕様の解釈が要るなら blocked で返す
+  ```
 - **再レビュー**: レビュー起動時に対象 worktree の `git rev-parse HEAD` を控え、再レビューではそれを `{PREV_REVIEWED_COMMIT}` として、前回の `{REVIEW_FILE}` と `{RESULT_FILE}`（`review_responses`）のパスと一緒に渡す。レビュアーが見るのは「前回の blocker / major が解消したか」と「`git diff {PREV_REVIEWED_COMMIT}..HEAD` に新しい問題が無いか」だけ（初回に全部挙げ、2 回目以降は差分だけを見れば 1 往復で片付く）
 - **3 回目の修正後も blocker / major が残ったら**、PR を作らずにグループを保留にし、「この指摘を残したまま PR にする / もう 1 回直させる / 自分で直す」を `pending_decisions.md` に積む（指摘は `{REVIEW_FILE}` のパスで示す）。上限まで回るのはレビュアーと implementer の判断が食い違っているときで、続けても収まらない
 

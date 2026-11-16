@@ -46,7 +46,7 @@
   "model": "（環境情報に書かれた自分の正確なモデル ID。例 claude-opus-5-5）",
   "status": "approved | changes_requested",
   "findings": [
-    {"severity": "major", "rule": "test/tc-coverage", "file": "tests/Feature/BookmarkTest.php", "line": 0, "problem": "TC-012 のテストが無い", "fix": "TC-012（limit=0 で 422）のテストを追加する"}
+    {"severity": "major", "rule": "test/tc-coverage", "file": "tests/Feature/BookmarkTest.php", "line": 0, "problem": "TC-012 のテストが無い", "fix": "TC-012（limit=0 で 422）のテストを追加する", "verified_by_execution": false}
   ],
   "checked_rules": ["test/no-delete", "test/tc-coverage", "..."],
   "uncertainty_verdicts": [

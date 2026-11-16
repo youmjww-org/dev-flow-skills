@@ -17,7 +17,7 @@
 | 順 | ファイル | 選び方 |
 |---|---|---|
 | 0 | `{project}/doc/process/conventions_verified.md` | **最優先**。無い、または `verified_for` が `tech_stack.language_version` / `framework_version` と違えば、先に [conventions/version-check.md](conventions/version-check.md) の手順で `conventions-verifier`（quality: `opus` / cost: `sonnet`、WebFetch 使用）を実行して作る。バージョンが未検出ならマニフェストから検出して `tech_stack` に書き戻す。WebFetch が使えなければ「未検証」と明記して先へ進む |
-| 1 | `testing.md` / `maintainability.md` | 常に |
+| 1 | `testing.md` / `maintainability.md` / `security.md` | 常に |
 | 1' | `<language>.md` | `tech_stack.language` から: Go → `go.md`、TypeScript → `typescript.md`、PHP → `php.md`、Python → `python.md`、Shell / Bash → `shell.md`。Infra グループで差分に `*.sh` / `*.bats` が出る見込みなら language に関係なく `shell.md` も |
 | 2 | `<framework>.md` | `tech_stack.framework` から: Next.js → `nextjs.md`（`react.md` も先に）、Laravel → `laravel.md`、React → `react.md`。無ければ飛ばす |
 | 3 | `{project}/doc/conventions.md` | あれば。言語・フレームワーク規約と矛盾したらこちらが優先 |

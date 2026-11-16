@@ -12,6 +12,7 @@ implementer（書く側）と reviewer（照合する側）の両方に注入す
 |---|---|---|
 | 1 | `conventions/testing.md`（**常に**） | 言語横断のテストコード規約。テスト削除・スキップ禁止、異常系必須、分岐ごとの TC、カバレッジゲート、ミューテーション確認 |
 | 1 | `conventions/maintainability.md`（**常に**） | 言語横断の保守性の規約。車輪の再発明をしない、知識の重複（DRY）、ドメインごとの独立、循環依存 |
+| 1 | `conventions/security.md`（**常に**） | セキュリティの判定・LLM を部品に使うシステムの規約。判定できない入力を黙って捨てない、一部の失敗で「問題なし」にしない、LLM の出力の検証、エージェントのツールの外への送信、最後の守りの設定の確認 |
 | 1' | `conventions/<language>.md` | `language: Go` → `go.md`、`TypeScript` → `typescript.md`、`PHP` → `php.md`、`Python` → `python.md`、`Shell` / `Bash` → `shell.md`。**Infra グループで差分に `*.sh` / `*.bats` があれば、language に関係なく `shell.md` も足す** |
 | 2 | `conventions/<framework>.md`（あれば） | `framework: Next.js` → `nextjs.md`（`react.md` も先に読む）、`Laravel` → `laravel.md`、`React` → `react.md` |
 | 3 | `{project}/doc/conventions.md`（あれば） | プロジェクト固有の規約。言語・フレームワーク規約と矛盾する場合はこちらが優先 |

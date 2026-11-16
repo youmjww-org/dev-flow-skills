@@ -71,7 +71,7 @@ flowchart TD
 | 3. consistency | `/dev-flow-consistency` | Impact Analysis（incremental のみ）・ID整合性・カバレッジ行列・DAG分類・設計凍結 | Haiku（子: Opus / Sonnet） |
 | 4. implementation | `/dev-flow-implementation` | DAG依存解決・並列実装・設計判断の記録・Plan Repair | Sonnet → Opus |
 | 5. test | `/dev-flow-test` | 自動モデル昇格でテスト全通過 | Haiku → Sonnet |
-| 6. compliance | `/dev-flow-compliance` | カバレッジ行列で機械検証・完了報告 | Opus 4.7 |
+| 6. compliance | `/dev-flow-compliance` | カバレッジ行列で機械検証・全体レビュー（束に分けて全行を読む）・完了報告 | Opus 4.7 |
 
 ---
 
@@ -540,6 +540,7 @@ dev-flow-skills/
 └── doc/process/
     ├── state.json                  # フロー状態（セッション再開用）
     ├── task_checklist.md           # タスクチェックリスト（DAG依存付き）
+    ├── whole-review/               # 全体レビューの結果（report.md・result.json。compliance が作る）
     ├── flow.log                    # hooks が記録する時系列イベントログ
     ├── coverage_matrix.md          # カバレッジ行列（REQ × TC × API）
     ├── plan_repair_log.md          # Plan Repair 履歴

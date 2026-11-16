@@ -26,6 +26,8 @@ dev-flow は 2 つの実行プロファイルを持つ。**既定は `quality`**
 | 生き残った変異の仕分け（統合検証で生き残りがあったときだけ） | dev-flow-implementation | **codex**（使えなければ opus） | **codex**（使えなければ opus） |
 | test runner | dev-flow-test | **opus 1 本で最大 5 回**（連続無進捗 2 回で打ち切り） | haiku 最大 2 回 → sonnet 最大 3 回 |
 | compliance の準拠チェック | dev-flow-compliance | opus | opus |
+| 全体レビューの読み手（束ごと・並列） | dev-flow-compliance | opus | sonnet（change / refactor では飛ばす） |
+| 全体レビューのまとめ役 | dev-flow-compliance | opus | opus |
 
 レビュアーの **codex** は「codex が使えれば Codex CLI で動かし、使えなければ右の Claude モデルで動かす」の意味（`state.json.reviewer_engine` が `claude` なら常に Claude）。手順は `reference/codex-review.md`。codex のレビューは `review.sh` の上限時間で打ち切るので、下のハング検知は使わない。
 

@@ -202,7 +202,7 @@ Agent Teams（`TeamCreate` / `team_name`）は使用しません。以下の 2 �
 `checklist-writer` と `spec-cache-writer` の両方の完了通知を受けたら、以下を実行。
 
 通知が届かない場合（エージェントが途中でエラー終了した等）は、以下の手順でリカバリします：
-1. `doc/process/task_checklist.md` と `doc/internal/spec_cache.md` の存在を Bash で確認する
+1. `doc/process/task_checklist.md`・`doc/internal/shared_components.md`（共通部品の台帳。checklist-writer が作る）・`doc/internal/spec_cache.md` の存在を Bash で確認する
 2. 両ファイルが存在すれば内容を Read して品質を直接確認し、問題なければ設計凍結コミットへ進む
 3. どちらかが存在しなければ、該当する writer を同じ `name` で Agent 再起動して生成し直す
 

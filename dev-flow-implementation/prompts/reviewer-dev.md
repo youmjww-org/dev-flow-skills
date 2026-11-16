@@ -1,6 +1,6 @@
 # Dev レビュアー プロンプト
 
-モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{DIFF_BASE}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
+モデル: `opus`（昇格ラダー無し）。`dev-flow-implementation/SKILL.md` STEP D から Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{MAIN_DIR}` `{REQUIREMENTS_PATHS}` `{SPEC_PATH}` `{GROUP_CONTEXT}`（Infra はインフラ仕様書、App は API 仕様書。無ければ「なし」） `{tech_stack}` `{REVIEW_CHECKLIST}` `{BASE_BRANCH}` `{DIFF_BASE}` `{REVIEW_FILE}` `{RESULT_FILE}`）を置換して Agent に渡す（codex のときは review.sh に渡す）。
 
 ---
 
@@ -10,6 +10,7 @@ Dev エージェントとは意図的に異なる観点でレビューします�
 対象 worktree: {MAIN_DIR}/../worktree-dev-{TEAM}-group-{GROUP_N}
 要件定義書: {REQUIREMENTS_PATHS}
 仕様書: {SPEC_PATH}
+担当分の仕様: {GROUP_CONTEXT}（implementer に渡した切り出し。チェックリストの担当タスクと、タスクに出てくる ID の節。**先にこれを読み、要件定義書・仕様書の全文は Read しない**。足りない節は `grep -n` で探して必要な行だけ読む）
 技術スタック: {tech_stack}
 ベースブランチ: {BASE_BRANCH}
 差分の基点: {DIFF_BASE}（このグループの変更だけを見る起点。依存先のマージ前に始めたグループでは、取り込んだ依存先の変更より後）
@@ -52,7 +53,7 @@ worktree でテスト・lint・型検査を**実際に実行**する（依存物
 {REVIEW_CHECKLIST}
 （言語・フレームワーク・プロジェクト規約のルール ID・重大度・確認方法。「確認方法」の grep は実際に実行して確認する）
 
-**テストへの要求（Dev レビューで見る）:** この実装で増えた・変わった `if` / `switch` / 早期 return / `catch` / 三項演算子を列挙し、それぞれを通る**ユニットテストが Dev worktree にある**か確認する（`test/branch-coverage`。置き場は `testing.md` の「Dev と QA のテスト分担」）。無ければ `changes_requested` にして `fix` に「ユニットテスト追加: {関数}: {分岐の条件}」と書く。**Dev implementer に回る**（QA には回さない。QA は実装の分岐を知らない）。あわせて Dev が仕様テスト（`tests/Feature/**` / `src/App.test.tsx` / `e2e/**` 等、TC-ID 付き）を書いていないか確認し、書いていれば `test/unit-vs-spec-split` として差し戻す（QA と同じパスにファイルが生まれてコンフリクトする）。出力の**形式**（日時フォーマット・レスポンスのラップ・エラーメッセージ文言）が仕様書どおりかのユニットテストがあるかも見る（形式のずれは Feature テストでは見逃しやすい）
+**テストへの要求（Dev レビューで見る）:** この実装で増えた・変わった `if` / `switch` / 早期 return / `catch` / 三項演算子を列挙し、それぞれを通る**ユニットテストが Dev worktree にある**か確認する（`test/branch-coverage`。置き場は `testing.md` の「Dev と QA のテスト分担」）。無ければ `changes_requested` にして `fix` に「ユニットテスト追加: {関数}: {分岐の条件}」と書く。**Dev implementer に回る**（QA には回さない。QA は実装の分岐を知らない）。あわせて Dev が仕様テスト（`tests/Feature/**` / `src/App.test.tsx` / `e2e/**` 等、TC-ID 付き）を書いていないか確認し、書いていれば `test/unit-vs-spec-split` として差し戻す（QA と同じパスにファイルが生まれてコンフリクトする）。出力の**形式**（日時フォーマット・レスポンスのラップ・エラーメッセージ文言）が仕様書どおりかのユニットテストがあるかも見る（形式のずれは Feature テストでは見逃しやすい）。差分で追加したテストの補助関数・フィクスチャ（`test_` 以外の `def`）は、保守性視点と同じく `grep -rn` で同じ役目の既存のものを探し、あれば `test/reuse-helpers`（major、`fix` に import 先）。分岐網羅はケースの数で見る。入力と期待値だけが違うケースを別関数で並べていても、それだけでは差し戻さない（`py/parametrize` 等の minor）
 
 **出力（SendMessage は使わない）:**
 

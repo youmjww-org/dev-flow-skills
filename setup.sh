@@ -110,7 +110,7 @@ if [ "$INSTALL_HOOKS" = true ]; then
     mv "$tmp" "$SETTINGS"
 
     echo "hooks 登録: ${SETTINGS}（バックアップ: ${backup}）"
-    echo "  SessionStart / PreToolUse(Agent) / PostToolUse(Write|Edit, Agent) / Stop"
+    echo "  SessionStart / PreToolUse(Agent) / PostToolUse(Write|Edit, Agent, Bash|Read|Agent|SendMessage|TaskStop) / Stop"
     echo "  Slack 通知を有効にする場合は settings.json の env に DEV_FLOW_SLACK_CHANNEL を設定してください"
   fi
 else

@@ -125,6 +125,14 @@ while 今のバッチに未完了グループが存在する:
 2. 最後のバッチなら「全グループ完了後」へ進む
 3. それ以外なら `current_batch` を 1 増やして state.json をコミットし、ステージを終える。quality では人間に「バッチ {K}/{M} が完了しました。文脈を空にするため `/clear` してから `/dev-flow` で次のバッチに進んでください」と伝える（`stage_history` の `outcome` には「バッチ区切り」と書く）。cost ではオーケストレーターがそのまま `stage-implementation-agent` を起動し直す（ステージエージェントの文脈は起動ごとに空になる）
 
+**文脈によるバッチの早期締め（quality）:** hook `context-guard.sh` が、オーケストレーターの文脈が閾値（`DEV_FLOW_CONTEXT_LIMIT`、既定 35 万トークン）を越えたと知らせたら、またはグループの完了を受け取ったときに `doc/process/.context_status` が `over=1` なら、バッチの途中でも締める。
+
+1. 新しいグループを起動しない（動いているグループは STEP H まで進める。統合検証・レビューの修正・PR は止めない）
+2. 動いているグループがすべて完了（または保留）したら、今のバッチの未着手のグループを `implementation_progress.batches` の次のバッチの先頭に移し（次のバッチが無ければ新しく作り）、上の「バッチの区切り」の 1〜3 を行う
+3. 人間への案内は「バッチの区切り」と同じ文面に「（文脈が {tokens}k トークンに達したため早めに区切りました）」を足す
+
+文脈はターンごとに丸ごと読み直されるので、会話が長いほど 1 ターンが高くつく。2026-10〜11 の photo-incident-triage の run では、1 バッチ（8 グループ）の会話でメインの文脈が 50〜97 万トークンまで伸び、メイン 4 セッションで全体の約 3 割を使っていた。区切ると人間の `/clear` が 1 回増えるが、人間が居ない時間帯なら次の `/dev-flow` までの待ちが増える点に注意する（閾値は `DEV_FLOW_CONTEXT_LIMIT` で調整できる）。
+
 **同時に動かすグループ数に上限は設けない。** 実行可能なグループはすべて起動する（1 バッチは最大 8 グループなので、同時に動くのもそれまで）。STEP H で implementer とレビュアーを閉じるのは、ペインを空けるためではなく、終わったエージェントからの通知でオーケストレーターの文脈を増やさないため。
 
 teammate の表示モード（Claude Code の `teammateMode`）が tmux / iTerm2 のペイン分割だと、エージェント 1 本ごとにペインを使い、ペインの上限で起動に失敗することがある（2026-10 の run でレビュアーの起動が 3 回失敗した）。`in-process` ならペインを使わない。起動に失敗したら、その起動だけを待ちに回し、ほかのエージェントが終わって閉じたあとに起動し直す。
@@ -144,11 +152,15 @@ teammate の表示モード（Claude Code の `teammateMode`）が tmux / iTerm2
 Agent Teams（`TeamCreate` / `team_name`）は使わない。implementer は**名前付きサブエージェント**として起動し、結果は `{RESULT_FILE}`（完了 JSON）で受け取る（最終回答は 1 行の要約）。
 
 - 層の中では **Dev と QA（すべての part）を同じターンで `run_in_background=true` で起動する**。Cross は infra 層が STEP D まで終わってから app 層を起動する
-- プロンプトは `prompts/dev.md` / `prompts/qa.md` を Read し、プレースホルダーを置換して渡す: `{TEAM}`（`app` / `infra`）・`{TEAM_LABEL}`（`App` / `Infra`）・`{TEAM_DOCS}`（ファイル冒頭の説明どおり）・`{GROUP_N}`（QA の part 2 以降は `N-pK`）・`{TASKS}`（その層の Dev タスク / その part の QA タスクと担当ファイル）・`{MAIN_DIR}`・`{MODE}`・`{BASELINE_COMMIT}`・`{RESULT_FILE}`（`{MAIN_DIR}/doc/process/results/group-{GROUP_N}-{dev|qa}-{team}.json`）・`{BASE_BRANCH}`・`{DIFF_BASE}`（STEP A）・`{REVIEW_CHECKLIST}`（セルフレビュー用）ほか
+- プロンプトは `prompts/dev.md` / `prompts/qa.md` を Read し、プレースホルダーを置換して渡す: `{TEAM}`（`app` / `infra`）・`{TEAM_LABEL}`（`App` / `Infra`）・`{TEAM_DOCS}`（ファイル冒頭の説明どおり）・`{GROUP_N}`（QA の part 2 以降は `N-pK`）・`{TASKS}`（その層の Dev タスク / その part の QA タスクと担当ファイル）・`{MAIN_DIR}`・`{MODE}`・`{BASELINE_COMMIT}`・`{RESULT_FILE}`（`{MAIN_DIR}/doc/process/results/group-{GROUP_N}-{dev|qa}-{team}.json`）・`{BASE_BRANCH}`・`{DIFF_BASE}`（STEP A）・`{REVIEW_CHECKLIST}`（セルフレビュー用）・`{GROUP_CONTEXT}`（下の「担当分の仕様の切り出し」）ほか
 - 仮に決めた事柄（`pending_decisions.md` の行）のうち、このグループのタスクが前提にするものがあれば、`{TASKS}` の末尾に「仮の決定（人間の回答待ち。この前提で実装する）」として書く
 - **QA に Dev を待たせない**: 「Dev の実装ができたら」「Dev ブランチを取り込んでから」のような指示を足さない。QA は仕様書だけで書き終えて完了を返し、Dev との突き合わせは STEP C.5 で行う
 - **完了前のセルフレビュー**: implementer にも `{REVIEW_CHECKLIST}` を渡し、完了 JSON を返す前にレビュアーと同じチェックリスト・観点で自分の差分を確かめて直させる（`prompts/dev.md` / `qa.md` の手順 4.8）。レビューの往復は 1 回で 10〜15 分かかるので、レビュアーが見つける指摘を先に潰しておく（Dev を sleep / until で待つコマンドは hook `dev-wait-guard.sh` が拒否する）
 - 長時間動くので、起動後にツールを実行しないままハングすることがある。疑わしければ `${CLAUDE_SKILL_DIR}/../dev-flow/reference/agent-hang-recovery.md` に従う
+
+**担当分の仕様の切り出し:** 起動する前に、implementer ごとに `${CLAUDE_SKILL_DIR}/scripts/group-context.py <N> <dev|qa> <app|infra>`（QA の part は `<N>` に `N-pK`）をメインの作業ディレクトリで実行する。チェックリストのそのグループ・その層の節から ID（REQ / TC / API / INFRA / NFR）と「API 仕様書 12.17」のような節番号を拾い、要件定義書・テスト定義書（frontmatter の該当 TC を含む）・API 仕様書・インフラ仕様書・スペックキャッシュから見出しにその ID・節番号を含む節だけを `doc/process/injection/group-{N}-{dev|qa}-{team}.md` に書き出す。標準出力は件数と全文比の 1 行だけ（オーケストレーターの文脈に仕様を入れない）。書き出したパスを `{GROUP_CONTEXT}` に入れて implementer とレビュアーに渡す。全文比が 50% を超えるとき・拾えた節が 0 のときは、その 1 行に警告が出る（タスクの書き方が ID を含んでいない可能性。そのまま渡してよい。implementer は足りなければ全文を grep する）
+
+2026-11 の run では、implementer・レビュアーに入ったツール出力の 3〜4 割が仕様書・スペックキャッシュの読み込みで、同じグループの Dev と QA、並列の各グループが同じ文書を別々に読んでいた。
 
 **プロンプトへの注入**（詳細は [reference/agent-prompt-injection.md](reference/agent-prompt-injection.md)）:
 
@@ -223,7 +235,7 @@ Cross は infra 層 → app 層の順を保つ。
 
 **エンジン（codex 優先）:** ステージ最初のレビューの前に `state.json.reviewer_engine`（無ければ `auto`）を見る。`auto` なら `${CLAUDE_SKILL_DIR}/../dev-flow/codex/review.sh available` を 1 回実行し、0 ならすべてのレビューを Codex CLI で動かす（`claude`、または `available` が 3 なら Claude のサブエージェント）。起動・待ち方・失敗時の切り替えは `${CLAUDE_SKILL_DIR}/../dev-flow/reference/codex-review.md`（種別 `impl`、cwd はレビュー対象の worktree）。codex なら Dev と QA は cost でも並べて起動してよい。それ以外（プロンプト・修正ループ・指摘の渡し方）は Claude と同じ。
 
-**プロンプト:** `prompts/reviewer-dev.md` / `prompts/reviewer-qa.md` を Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{BASE_BRANCH}`（`implementation_progress.base_branch`）・`{DIFF_BASE}`（STEP A）・仕様書パス・`{tech_stack}` `{REVIEW_CHECKLIST}`、`{REVIEW_FILE}`（メインの作業ディレクトリの `doc/process/reviews/group-{N}-{dev|qa}-{team}-r{回数}.json`）、`{RESULT_FILE}`（対応する implementer の完了 JSON））を置換する。Agent ツールにはツール制限が無いので、Claude のレビュアーにはプロンプト冒頭に「**`{REVIEW_FILE}` を書く以外のファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認する（ミューテーションの再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を付ける。implementer の `uncertainty_points` は、レビュアーが `{RESULT_FILE}` から読む（プロンプトに書き写さない）。
+**プロンプト:** `prompts/reviewer-dev.md` / `prompts/reviewer-qa.md` を Read し、プレースホルダー（`{TEAM}` `{TEAM_LABEL}` `{GROUP_N}` `{BASE_BRANCH}`（`implementation_progress.base_branch`）・`{DIFF_BASE}`（STEP A）・仕様書パス・`{tech_stack}` `{REVIEW_CHECKLIST}`、`{REVIEW_FILE}`（メインの作業ディレクトリの `doc/process/reviews/group-{N}-{dev|qa}-{team}-r{回数}.json`）、`{RESULT_FILE}`（対応する implementer の完了 JSON）、`{GROUP_CONTEXT}`（対応する implementer に渡した切り出し））を置換する。Agent ツールにはツール制限が無いので、Claude のレビュアーにはプロンプト冒頭に「**`{REVIEW_FILE}` を書く以外のファイルの編集・作成は禁止。Read / Grep / Bash（読み取り系）のみで確認する（ミューテーションの再現で一時的に壊したファイルは直後に `git checkout --` で戻す）**」を付ける。implementer の `uncertainty_points` は、レビュアーが `{RESULT_FILE}` から読む（プロンプトに書き写さない）。
 
 **レビュー結果の保存:** レビュアーが `{REVIEW_FILE}` に JSON の全文を書き、最終回答では `status` と件数の 1 行だけを返す（codex は `review.sh wait` が書く）。オーケストレーターは `jq -c '{status, n: (.findings | group_by(.severity) | map({(.[0].severity): length}) | add), needs_human: [.uncertainty_verdicts[]? | select(.verdict == "needs_human") | .point]}' {REVIEW_FILE}` で要点だけを読む。STEP H の集約もこのファイルから行う。
 
@@ -324,6 +336,8 @@ Dev → QA（各 part）の順序と `update-branch`、`mergeable=UNKNOWN` の�
 - **通知に文章で応えない**: 待機中・途中経過の通知（`idle_notification` など）で状態が変わっていなければ、何も書かずに次の通知を待つ。人間への報告は、グループの完了・保留・バッチの区切りのときだけ 1〜2 行で書く
 - **自分で実装しない**: worktree のコード・テストの修正、統合検証のテスト実行は implementer に頼む。オーケストレーターが直してよいのは `doc/process/` の記録と state.json だけ
 - **出力を絞る**: `gh` は `--json … -q` で必要な項目だけ、テスト・lint は終了コードと件数の行だけ（`| tail -n 5`）、ファイルは `sed -n` / `grep` で必要な行だけ読む。仕様書・チェックリストを丸ごと Read しない
+- **仕様書の中身を自分で読まない**: implementer・レビュアーに渡す仕様は `group-context.py` でファイルに切り出し、パスだけを渡す（STEP B「担当分の仕様の切り出し」）。オーケストレーターが仕様書・要件定義書を `sed` / `cat` で読むのは、`pending_decisions.md` の判断や Plan Repair で人間に示す箇所を確かめるときだけ（2026-11 の run では、メインに入ったツール出力の 13〜20% が Bash で読んだ仕様書・チェックリストだった）
+- **読んだ手順書を読み直さない**: 各ステージの SKILL.md・reference は、この会話で既に Read していれば読み直さない（2026-11 の run では SKILL.md の読み込みが 2 セッションで 34 回・43 万字あった）。会話の圧縮（compact）の後と `/clear` の後だけ読み直す
 
 ## エラーハンドリング
 

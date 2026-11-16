@@ -66,6 +66,10 @@ def test_tc003_fee_large():
     assert fee(11) == 22
 
 
+class HelperError(Exception):
+    """テストの候補を持たない補助のクラス（消してはいけない）"""
+
+
 class TestDup:
     """クラスの中身が全部候補なら、クラスごと消す"""
 
@@ -158,6 +162,7 @@ def main():
         src = (repo / "tests/test_calc.py").read_text()
         check("候補だけを消す", ("def test_adult_boundary_again" in src, "def test_adult_weak" in src,
                                   "def test_tc001_adult_boundary" in src), (False, False, True))
+        check("テストの候補を持たない補助のクラスは消さない", "class HelperError" in src, True)
         check("中身が全部候補のクラスはクラスごと消す", ("class TestDup" in src,
               any(x["test"].endswith("TestDup::test_dup_large") for x in r["removable_functions"])), (False, True))
         check("消したものを記録", len(json.loads(out.read_text())["removed_functions"]), len(r["removable_functions"]))

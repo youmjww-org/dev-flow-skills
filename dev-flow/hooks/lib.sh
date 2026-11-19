@@ -286,6 +286,49 @@ allow() {
   exit 0
 }
 
+# 直近の人間の発言で PR のマージが明示的に許可されているか（pr-merge-guard.sh 用）
+#   - サブエージェント内の呼び出し（hook 入力に agent_id がある）は常に不可。dev-flow の自動実行に
+#     人間の許可を流用させないため
+#   - transcript の最後の人間の発言（type=user かつ origin.kind=human。作業中に送られたものは
+#     type=attachment の queued_command）だけを見る。Claude の出力・ツール結果・タスク通知は
+#     origin が human にならないので、Claude 自身が許可を作り出すことはできない
+#   - その発言に「マージ」と「許可」の両方を含み、「許可しない」等の否定を含まないこと
+human_approved_merge() {
+  [ -z "$(jqi '.agent_id // empty')" ] || return 1
+  local tp
+  tp="$(jqi '.transcript_path // empty')"
+  [ -n "$tp" ] && [ -f "$tp" ] || return 1
+  python3 - "$tp" <<'PYEOF'
+import json, re, sys
+last = None
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    try:
+        d = json.loads(line)
+    except ValueError:
+        continue
+    if d.get("isSidechain") or d.get("isMeta"):
+        continue
+    text = None
+    if d.get("type") == "user" and (d.get("origin") or {}).get("kind") == "human":
+        c = (d.get("message") or {}).get("content")
+        if isinstance(c, str):
+            text = c
+        elif isinstance(c, list):
+            text = "\n".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+    elif d.get("type") == "attachment":
+        a = d.get("attachment") or {}
+        if a.get("type") == "queued_command" and (a.get("origin") or {}).get("kind") == "human":
+            text = a.get("prompt") if isinstance(a.get("prompt"), str) else None
+    if text is not None:
+        last = text
+if last is None:
+    sys.exit(1)
+if re.search(r"許可(し|は)?(ない|しない|しません|できない)|不許可|許可(する|は)?な", last):
+    sys.exit(1)
+sys.exit(0 if ("マージ" in last and "許可" in last) else 1)
+PYEOF
+}
+
 # PreToolUse: 人間に確認を求める
 ask() {
   jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r}}'

@@ -2,6 +2,7 @@
 # テスト用の gh スタブ。GH_FIXTURE_DIR/pr-<N>.json と pr-<N>.diff を返す。
 set -e
 sub="$1 $2"
+[ -n "${GH_ARGS_LOG:-}" ] && echo "$*" >> "$GH_ARGS_LOG"
 case "$sub" in
   "pr view")
     n="$3"; f="$GH_FIXTURE_DIR/pr-$n.json"

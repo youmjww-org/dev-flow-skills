@@ -588,7 +588,7 @@ python3 tools/flow-metrics.py --ledger ~/project/a ~/project/b         # 複数�
 | `doc/{requirements,test-spec,api-spec,infra-spec}/*.md`・`task_checklist.md` 書き込み後 | frontmatter のスキーマ検証（ID 形式・重複・`covers` の REQ 実在・`implemented_by` の関数実在・本文見出し・`status` 値域）。違反は差し戻し。どの `covers` にも無い REQ は警告 |
 | `escalation_*.md` 生成後 | `flow.log` に記録。`DEV_FLOW_SLACK_CHANNEL` を設定していれば Slack に通知（未設定なら通信なし） |
 | `stage-*-agent` 完了後 | 所要時間を `flow.log` に記録。requirements 完了時は人間確認ゲートを念押し |
-| `gh pr merge` 実行前 | 自動マージ条件を検証。`feature/*` 向けの作業ブランチ PR で、CI 全通過・コンフリクトなし・DB 破壊的変更なし・`--merge` 方式のときだけ許可。`main` / `develop` 向けは常に拒否 |
+| `gh pr merge` 実行前 | 自動マージ条件を検証。`feature/*` 向けの作業ブランチ PR で、CI 全通過・コンフリクトなし・DB 破壊的変更なし・`--merge` 方式のときだけ許可。`main` / `develop` 向けや条件を満たさない PR は、人間が会話で明示的に許可したとき（サブエージェントからは不可）だけ通す |
 | セッション開始 / 応答完了 | 進行中フローの次ステージとアクションを表示。ブランチが origin より遅れていれば警告 |
 
 dev-flow を使っていないプロジェクト（`doc/process/state.json` がない、`stage-*-agent` を起動しない）では何もしません。詳細・単体テスト方法は [`dev-flow/hooks/README.md`](dev-flow/hooks/README.md) を参照してください。

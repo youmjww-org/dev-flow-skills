@@ -35,15 +35,15 @@
 |---|---|
 | implementation の実行者（quality: オーケストレーター / cost: `stage-implementation-agent`） | グループの実装が終わったら `gh pr create` で PR を作り、番号を `implementation_progress.pr_numbers["group-N"]`（**配列**。1 グループ 2〜4 PR）に記録。続けて各 PR に `gh pr merge <N> --merge` を試す。全 PR がマージされたグループは STEP H で `completed_groups` に入れる。deny された PR が残るグループは「人間マージ待ち」にし、依存の無い他グループがあれば続け、無ければ PR URL と deny 理由を人間に出して終える |
 | オーケストレーター（再開時） | `next_stage = "implementation"` で `implementation_progress` が残っていれば、そのまま implementation を再開する（PR の状態確認と取り込みは implementation 側の再開処理が行う）。自分で `gh pr view` をポーリングしない |
-| 人間 | 自動マージ条件を満たさない PR のレビュー・マージ。`main` / `develop` 向けの PR は常に人間がマージする |
+| 人間 | 自動マージ条件を満たさない PR のレビュー・マージ。`main` / `develop` 向けの PR も人間がマージするか、会話で明示的に許可する（下の「人間の明示的な許可」） |
 
 hook 未導入環境（起動時コンテキストの「hooks: disabled」）では `gh pr merge` を一切発行せず、すべて人間に任せる。
 
 ## 自動マージ条件
 
-`pr-merge-guard.sh` が機械的に検証する。すべて満たしたときだけ通る。
+`pr-merge-guard.sh` が機械的に検証する。すべて満たしたときだけ通る（一部は人間の明示的な許可でも通る。下の「人間の明示的な許可」）。
 
-- ベースブランチが `feature/*`（`DEV_FLOW_AUTO_MERGE_BASE_PATTERN` で変更可）で、`implementation_progress.base_branch` と一致する。`main` / `master` / `develop` / `release/*` / `hotfix/*` は常に拒否
+- ベースブランチが `feature/*`（`DEV_FLOW_AUTO_MERGE_BASE_PATTERN` で変更可）で、`implementation_progress.base_branch` と一致する。`main` / `master` / `develop` / `release/*` / `hotfix/*` は人間の明示的な許可が無ければ拒否
 - CI チェックがすべて成功している（チェックが 1 つも無い PR は拒否）
 - `mergeable == MERGEABLE`（コンフリクトなし）
 - diff にテストの削除・スキップ・無効化（`t.Skip` / `it.skip` / `@pytest.mark.skip` / `markTestSkipped` / テスト関数の削除。移動は可）が無い。パターンは `hooks/test-guard-patterns.txt`
@@ -52,4 +52,16 @@ hook 未導入環境（起動時コンテキストの「hooks: disabled」）で
 
 ## gh pr merge が deny されたとき
 
-同じコマンドを再試行しない（条件が変わらない限り結果は同じ）。deny 理由を読み、CI 未完了なら `timeout 900 gh pr checks <N> --watch --fail-fast` で完了を待って 1 回だけ再試行する。CI 失敗・コンフリクト・main 向けなど満たせないものは「人間マージ待ち」として PR URL と deny 理由を人間に 1 回出す。人間から「マージしてよい」と言われても hook の条件は緩まないので、人間自身にマージしてもらう。
+同じコマンドを再試行しない（条件が変わらない限り結果は同じ）。deny 理由を読み、CI 未完了なら `timeout 900 gh pr checks <N> --watch --fail-fast` で完了を待って 1 回だけ再試行する。CI 失敗・コンフリクト・main 向けなど満たせないものは「人間マージ待ち」として PR URL と deny 理由を人間に 1 回出す。hook を迂回して `gh api` 等でマージしない。
+
+### 人間の明示的な許可
+
+自動マージ条件のうち、**ベースブランチ（保護ブランチ・対象外・`base_branch` との不一致）・CI 未通過/CI なし・DB 破壊的変更・テストの削除/スキップ**は、人間が会話で明示的に許可すれば通る。
+
+- 判定: transcript の**直近の人間の発言**（`origin.kind = "human"`。作業中に送った発言を含む）に「マージ」と「許可」の両方が含まれ、「許可しない」等の否定が無いこと。例: 「いいよマージして、明示的に許可する」
+- 効くのはその発言に応えている間だけ。人間が次の発言をすると失効する
+- **サブエージェントからの実行には効かない**（hook 入力に `agent_id` があれば常に不可）。dev-flow の自動実行に人間の許可を流用させないため
+- Claude の出力・ツール結果・タスク通知は `origin` が human にならないので、許可の代わりにならない
+- Draft・コンフリクト・OPEN でない・`--merge` 以外の方式・PR 番号の指定漏れは、許可があっても deny（マージ自体ができない、または書式の誤り）
+- 確認ダイアログ（`permissionDecision: "ask"`）は使わない。bypassPermissions モードでは hook の ask が確認なしで許可される（2026-11-19 に実測）ため
+- `gh pr merge` の `-R owner/repo` と PR URL の owner/repo は `gh pr view` / `gh pr diff` に引き継ぐので、リポジトリ外の cwd からでも判定できる

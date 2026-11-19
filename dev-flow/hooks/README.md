@@ -19,7 +19,7 @@
 | `PreToolUse` | `Write\|Edit\|NotebookEdit` | `test-stage-guard.sh` | `next_stage == test` のとき、テストファイル（`*_test.go` / `test_*.py` / `*.test.ts` / `tests/` 等）と `doc/test-spec/` への書き込みを `deny`。test ステージはプロダクションコードしか直せない（DocDD） |
 | `PreToolUse` | `Bash` | `state-write-guard.sh` | `doc/process/state.json` を Bash（リダイレクト・`mv` / `cp`・`tee`・`sed -i`・スクリプトの `open(..., "w")`）で書き換えるのを `deny`。Bash で書くと `state-sync.sh`（Write / Edit のみ）が動かず、検証と `flow.log` への遷移記録が抜けるため。読むだけのコマンドは素通り |
 | `PreToolUse` | `Bash` | `dev-wait-guard.sh` | `next_stage == implementation` のとき、Dev のブランチ・worktree（`dev/{app,infra}-group-N` / `worktree-dev-`）を `sleep` / `until` で待つコマンドを `deny`。QA は Dev を待たずに仕様書から書き、突き合わせは統合検証で行う。1 回だけの `git log` 等の確認は素通り |
-| `PreToolUse` | `Bash` | `pr-merge-guard.sh` | `gh pr merge` を捕まえ、自動マージ条件を検証。`main`/`develop`/`release/*`/`hotfix/*` 向けは常に `deny`。`feature/*` 向けは CI 全通過・コンフリクトなし・DB 破壊的変更なし（`db-destructive-patterns.txt`）・テストの削除/スキップなし（`test-guard-patterns.txt`）。DB 検査はテストファイル内の文字列（SQL インジェクション対策テストのデータ等）を対象外にする・`--merge` 方式のときだけ `allow` |
+| `PreToolUse` | `Bash` | `pr-merge-guard.sh` | `gh pr merge` を捕まえ、自動マージ条件を検証。`main`/`develop`/`release/*`/`hotfix/*` 向けは人間の明示的な許可（直近の人間の発言に「マージ」と「許可」。サブエージェントからは不可）が無ければ `deny`。`feature/*` 向けは CI 全通過・コンフリクトなし・DB 破壊的変更なし（`db-destructive-patterns.txt`）・テストの削除/スキップなし（`test-guard-patterns.txt`）。DB 検査はテストファイル内の文字列（SQL インジェクション対策テストのデータ等）を対象外にする・`--merge` 方式のときだけ `allow` |
 | `Stop` | — | `stop-summary.sh` | 直近 10 分以内に dev-flow イベントがあった場合のみ、次ステージとアクションを表示 |
 
 `stage-*-agent` 以外の Agent 呼び出し・`doc/process/` 以外への書き込みでは何もしないため、dev-flow を使わないプロジェクトへの影響はありません。
@@ -67,7 +67,9 @@ Claude Code 内では `/hooks` で登録状況を確認できます。
 
 | 環境変数 | 既定 | 意味 |
 |---|---|---|
-| `DEV_FLOW_AUTO_MERGE_BASE_PATTERN` | `^feature/` | 自動マージを許可するベースブランチの正規表現。保護ブランチ（main/master/develop/release/hotfix）はこの設定に関係なく常に拒否 |
+| `DEV_FLOW_AUTO_MERGE_BASE_PATTERN` | `^feature/` | 自動マージを許可するベースブランチの正規表現。保護ブランチ（main/master/develop/release/hotfix）はこの設定に関係なく、人間の明示的な許可が無ければ拒否 |
+
+人間の明示的な許可で通る条件と判定方法は `reference/hooks-and-merge.md` の「人間の明示的な許可」を参照。
 
 DB 破壊的変更の判定は PR diff の追加行を `db-destructive-patterns.txt` で grep し、Terraform の DB リソース削除（`resource "aws_db_instance"` 等の削除行）も検出します。誤検知は「自動マージしない」側に倒れるだけなので、パターンは広めです。プロジェクト固有のパターンを足す場合はこのファイルに追記してください。
 

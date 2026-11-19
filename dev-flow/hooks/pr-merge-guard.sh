@@ -2,7 +2,16 @@
 # PreToolUse (matcher: Bash)
 # `gh pr merge` を捕まえ、自動マージ条件を機械的に検証する。プロンプトの指示では緩和できない。
 #
-#   常に拒否:   ベースが main / master / develop / release/* / hotfix/*
+#   判定は 3 種類:
+#     常に deny … マージ自体ができない・書式の誤り（Draft / コンフリクト / OPEN でない / 方式・番号の指定ミス）
+#     人間の許可で allow … 自動マージの条件を外れるもの（保護ブランチ・対象外のベース・CI 未通過・
+#             DB 破壊的変更・テストの削除/スキップ）。直近の人間の発言に「マージ」と「許可」の両方が
+#             含まれていれば allow、無ければ deny（human_approved_merge を参照）
+#     allow … 下の条件をすべて満たす
+#
+#   "ask"（確認ダイアログ）を使わない理由: bypassPermissions モードでは hook の ask が確認なしで
+#   許可される（2026-11-19 に実測。捨て PR が確認なしでマージされた）。dev-flow は bypass で
+#   動かすことが多いので、ask にすると main 向けまで無人でマージされてしまう。
 #   許可条件:   すべて満たすこと
 #     - ベースが DEV_FLOW_AUTO_MERGE_BASE_PATTERN（既定 ^feature/）に一致し、
 #       state.json.implementation_progress.base_branch があればそれと一致
@@ -12,7 +21,7 @@
 #     - diff に DB の破壊的変更が含まれない（db-destructive-patterns.txt。テストファイル内の文字列は対象外）
 #     - diff にテストの削除・スキップ・無効化が含まれない（test-guard-patterns.txt）
 #     - マージ方式は --merge のみ（--squash / --rebase / --auto / --admin は拒否）
-#     - 1 コマンドにつき 1 PR、番号または URL で明示
+#     - 1 コマンドにつき 1 PR、番号または URL で明示（-R / --repo の指定は gh pr view / diff にも引き継ぐ）
 #
 # `gh pr merge` を含まないコマンドでは何もしない。
 
@@ -64,14 +73,30 @@ if ! printf ' %s ' "$MERGE_ARGS" | grep -qE -- '[[:space:]](--merge|-m)[[:space:
 fi
 
 PR=""
+REPO=""
+next_is_repo=""
 for tok in $MERGE_ARGS; do
-  case "$tok" in -*) continue ;; esac
-  PR="$tok"
-  break
+  if [ -n "$next_is_repo" ]; then REPO="$tok"; next_is_repo=""; continue; fi
+  case "$tok" in
+    -R | --repo) next_is_repo=1; continue ;;
+    --repo=*) REPO="${tok#--repo=}"; continue ;;
+    -*) continue ;;
+  esac
+  [ -z "$PR" ] && PR="$tok"
 done
 case "$PR" in
-  *://*/pull/*) PR="${PR##*/pull/}"; PR="${PR%%[^0-9]*}" ;;
+  *://*/pull/*)
+    # URL 指定なら owner/repo も URL から取る（リポジトリ外の cwd でも gh pr view できるように）
+    if [ -z "$REPO" ]; then REPO="${PR#*://*/}"; REPO="${REPO%%/pull/*}"; fi
+    PR="${PR##*/pull/}"; PR="${PR%%[^0-9]*}" ;;
 esac
+GH_REPO_ARGS=()
+[ -n "$REPO" ] && GH_REPO_ARGS=(-R "$REPO")
+
+# 人間の明示的な許可があればマージしてよい理由を集める（最後にまとめて ask する）
+NEEDS=""
+need() { NEEDS="${NEEDS}- ${1}
+"; }
 if ! printf '%s' "$PR" | grep -qE '^[0-9]+$'; then
   deny "dev-flow hook: マージ対象の PR を番号（または URL）で明示してください。カレントブランチ推定やブランチ名指定は拒否します。"
 fi
@@ -79,7 +104,7 @@ fi
 # ---- PR 情報 ----
 command -v gh >/dev/null 2>&1 || deny "dev-flow hook: gh コマンドが見つからないため自動マージ条件を検証できません。"
 
-INFO="$(gh pr view "$PR" --json number,state,isDraft,baseRefName,headRefName,mergeable,statusCheckRollup,url 2>&1)" \
+INFO="$(gh pr view "$PR" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --json number,state,isDraft,baseRefName,headRefName,mergeable,statusCheckRollup,url 2>&1)" \
   || deny "dev-flow hook: gh pr view $PR に失敗しました: $INFO"
 
 pv() { printf '%s' "$INFO" | jq -r "$1"; }
@@ -95,15 +120,14 @@ URL="$(pv '.url')"
 
 # ---- ベースブランチ ----
 if printf '%s' "$BASE" | grep -qE "$PROTECTED"; then
-  deny "dev-flow hook: PR #$PR のベース '$BASE' は保護ブランチです。main / develop 系へのマージは常に人間が行います。$URL"
-fi
-if ! printf '%s' "$BASE" | grep -qE "$BASE_PATTERN"; then
-  deny "dev-flow hook: PR #$PR のベース '$BASE' は自動マージ対象（${BASE_PATTERN}）ではありません。人間にマージを依頼してください。$URL"
+  need "ベース '$BASE' は保護ブランチ（main / develop 系）"
+elif ! printf '%s' "$BASE" | grep -qE "$BASE_PATTERN"; then
+  need "ベース '$BASE' は自動マージ対象（${BASE_PATTERN}）ではない"
 fi
 if state_valid; then
   EXPECTED_BASE="$(state_get '.implementation_progress.base_branch')"
   if [ -n "$EXPECTED_BASE" ] && [ "$EXPECTED_BASE" != "$BASE" ]; then
-    deny "dev-flow hook: PR #$PR のベース '$BASE' が state.json の base_branch '$EXPECTED_BASE' と一致しません。"
+    need "ベース '$BASE' が state.json の base_branch '$EXPECTED_BASE' と一致しない"
   fi
 fi
 
@@ -117,7 +141,7 @@ CHECKS="$(pv '
     else (
       map(
         if .__typename == "CheckRun" then
-          (if .status == "COMPLETED" and ((.conclusion // "") | IN("SUCCESS","NEUTRAL","SKIPPED")) then empty else (.name // "check") + "=" + ((.conclusion // .status) // "PENDING") end)
+          (if .status == "COMPLETED" and ((.conclusion // "") | IN("SUCCESS","NEUTRAL","SKIPPED")) then empty else (.name // "check") + "=" + (if ((.conclusion // "") != "") then .conclusion else (.status // "PENDING") end) end)
         else
           (if .state == "SUCCESS" then empty else (.context // "status") + "=" + (.state // "PENDING") end)
         end
@@ -125,12 +149,12 @@ CHECKS="$(pv '
     ) end')"
 case "$CHECKS" in
   OK) ;;
-  NONE) deny "dev-flow hook: PR #$PR に CI チェックがありません。CI が無い PR は自動マージしません。$URL" ;;
-  *) deny "dev-flow hook: PR #$PR の CI が通っていません: ${CHECKS}。$URL" ;;
+  NONE) need "CI チェックが 1 つも無い" ;;
+  *) need "CI が通っていない: ${CHECKS}" ;;
 esac
 
 # ---- DB 破壊的変更 ----
-DIFF="$(gh pr diff "$PR" 2>/dev/null)" || deny "dev-flow hook: gh pr diff $PR に失敗しました。"
+DIFF="$(gh pr diff "$PR" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} 2>/dev/null)" || deny "dev-flow hook: gh pr diff $PR に失敗しました。"
 ADDED="$(printf '%s\n' "$DIFF" | grep -E '^\+[^+]' || true)"
 # DB 検査はテストファイル以外の追加行だけを見る（SQL インジェクション対策テストのデータ "'; DROP TABLE x; --" 等で
 # 毎回止まるのを避ける）。テスト削除検査と Terraform 検査は従来どおり全 diff を対象にする。
@@ -150,8 +174,8 @@ DEL_ALL="$(printf '%s\n' "$NON_TEST_ADDED" | grep -iE 'DELETE[[:space:]]+FROM[[:
 HITS="$(printf '%s\n%s' "$HITS" "$DEL_ALL" | sed '/^$/d')"
 TF_DEL="$(printf '%s\n' "$DIFF" | grep -E '^-[^-]' | grep -E 'resource[[:space:]]+"(aws_(db_instance|rds_cluster|rds_cluster_instance|dynamodb_table|elasticache_cluster|elasticache_replication_group|redshift_cluster|docdb_cluster|neptune_cluster)|google_sql_database_instance|azurerm_(mssql|postgresql|mysql)_[a-z_]*server)"' | head -5 || true)"
 if [ -n "$HITS" ] || [ -n "$TF_DEL" ]; then
-  deny "dev-flow hook: PR #$PR に DB の破壊的変更が含まれています。人間がレビューしてマージしてください。$URL
-$(printf '%s\n%s' "$HITS" "$TF_DEL" | sed '/^$/d' | sed 's/^/  /')"
+  need "DB の破壊的変更を含む:
+$(printf '%s\n%s' "$HITS" "$TF_DEL" | sed '/^$/d' | sed 's/^/    /')"
 fi
 
 # ---- テストの削除・スキップ ----
@@ -216,8 +240,19 @@ while IFS= read -r line; do
 done < "$TEST_PATTERNS"
 TEST_HITS="$(printf '%s' "$TEST_HITS" | sed '/^$/d' | head -8)"
 if [ -n "$TEST_HITS" ]; then
-  deny "dev-flow hook: PR #${PR} にテストの削除・スキップ・無効化が含まれています。テストが通らない場合はプロダクションコードを直すのが原則です（DocDD）。意図的なら人間がレビューしてマージしてください。${URL}
-$(printf '%s\n' "$TEST_HITS" | sed 's/^/  /')"
+  need "テストの削除・スキップ・無効化を含む（通らないならプロダクションコードを直すのが原則・DocDD）:
+$(printf '%s\n' "$TEST_HITS" | sed 's/^/    /')"
+fi
+
+if [ -n "$NEEDS" ]; then
+  if human_approved_merge; then
+    log_flow "event=merge_human_approved pr=$PR base=$BASE head=$HEAD_REF"
+    allow "dev-flow hook: PR #${PR}（$HEAD_REF → ${BASE}）は自動マージ条件を満たしていませんが、直近の人間の発言でマージが明示的に許可されているため通します。${URL}
+${NEEDS}"
+  fi
+  log_flow "event=merge_needs_approval pr=$PR base=$BASE head=$HEAD_REF"
+  deny "dev-flow hook: PR #${PR}（$HEAD_REF → ${BASE}）は自動マージ条件を満たしていません。${URL}
+${NEEDS}人間にマージを依頼するか、人間が「マージを許可する」のように明示的に許可した後で再実行してください（サブエージェントからの実行では許可は効きません）。"
 fi
 
 log_flow "event=auto_merge_allowed pr=$PR base=$BASE head=$HEAD_REF"
